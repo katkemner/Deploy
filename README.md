@@ -97,16 +97,16 @@ Access the complete library of prompts here: [EMPATHY_PROMPTS.md](EMPATHY_PROMPT
 ## Sharing These Prompts
 
 Feel free to:
-- ✅ Share individual prompts with friends, clients, or colleagues
-- ✅ Use these prompts in educational or therapeutic settings
-- ✅ Adapt prompts for your specific needs
-- ✅ Link to this repository
-- ✅ Fork and build upon this work
+- Share individual prompts with friends, clients, or colleagues
+- Use these prompts in educational or therapeutic settings
+- Adapt prompts for your specific needs
+- Link to this repository
+- Fork and build upon this work
 
 Please:
-- 📝 Credit the original author (Kat Kemner)
-- 📜 Maintain the MIT license
-- 🤝 Share improvements back to the community
+- Credit the original author (Kat Kemner)
+- Maintain the MIT license
+- Share improvements back to the community
 
 ## Contributing
 
