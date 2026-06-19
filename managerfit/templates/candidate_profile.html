@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ candidate.name }} · ManagerFit{% endblock %}
+{% block content %}
+<article class="profile">
+  <div class="profile-head">
+    <div>
+      <p class="eyebrow">Candidate</p>
+      <h1>{{ candidate.name }}</h1>
+      {% if candidate.headline %}<p class="philosophy">{{ candidate.headline }}</p>{% endif %}
+    </div>
+    <div class="share">
+      <span class="muted">Shareable profile link</span>
+      <code>/candidate/{{ candidate.id }}</code>
+    </div>
+  </div>
+
+  <section>
+    <h2>The manager I thrive under</h2>
+    <ul class="stylebars">
+      {% for dim in dimensions %}
+        {% set v = candidate.scores.get(dim.key, 3) %}
+        <li>
+          <div class="stylebar-head">
+            <span>{{ dim.name }}</span>
+            <span class="muted">{{ dim.label_for(v) }}</span>
+          </div>
+          <div class="bar"><div class="fill" style="width: {{ (v / 5 * 100) | round }}%"></div></div>
+          <div class="bar-anchors"><span>{{ dim.low_label }}</span><span>{{ dim.high_label }}</span></div>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="two-col">
+    <div>
+      <h2>Big Five summary</h2>
+      <ul class="traits">
+        {% for key, label, desc in big_five %}
+          <li><span>{{ label }}</span><span class="muted">{{ candidate.big_five.get(key, 3) }}/5</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h2>CliftonStrengths</h2>
+      {% if candidate.strengths %}
+        <ul class="chips static">{% for s in candidate.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
+      {% else %}<p class="muted">Not provided.</p>{% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h2>Manager fit</h2>
+    {% if managers %}
+      <ul class="cards">
+        {% for m in managers %}
+          <li class="card">
+            <a href="{{ url_for('fit', manager_token=m.id, candidate_token=candidate.id) }}">
+              <strong>{{ m.name }}</strong>
+              <span class="muted">{{ m.role }} — view fit →</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No manager profiles yet. <a href="{{ url_for('assess_manager') }}">Create one →</a></p>
+    {% endif %}
+  </section>
+</article>
+{% endblock %}

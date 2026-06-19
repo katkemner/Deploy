@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Meet your manager <em>before</em> you apply.</h1>
+  <p class="lede">
+    Most hiring focuses on the company, the role, and the comp. But your manager is the
+    single greatest determinant of your day-to-day experience. ManagerFit makes the manager
+    part of the job product — so candidates can evaluate leadership style and
+    candidate-manager fit up front.
+  </p>
+  <div class="cta-row">
+    <a class="btn primary" href="{{ url_for('assess_manager') }}">Build a manager profile</a>
+    <a class="btn" href="{{ url_for('assess_candidate') }}">Build a candidate profile</a>
+  </div>
+</section>
+
+<section class="directory">
+  <div class="col">
+    <h2>Manager profiles</h2>
+    {% if managers %}
+      <ul class="cards">
+        {% for m in managers %}
+          <li class="card">
+            <a href="{{ url_for('manager_profile', token=m.id) }}">
+              <strong>{{ m.name }}</strong>
+              <span class="muted">{{ m.role }}{% if m.company %} · {{ m.company }}{% endif %}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No manager profiles yet. <a href="{{ url_for('assess_manager') }}">Create one →</a></p>
+    {% endif %}
+  </div>
+
+  <div class="col">
+    <h2>Candidate profiles</h2>
+    {% if candidates %}
+      <ul class="cards">
+        {% for c in candidates %}
+          <li class="card">
+            <a href="{{ url_for('candidate_profile', token=c.id) }}">
+              <strong>{{ c.name }}</strong>
+              <span class="muted">{{ c.headline }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No candidate profiles yet. <a href="{{ url_for('assess_candidate') }}">Create one →</a></p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="how">
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li><strong>Managers</strong> complete a work-style assessment (communication, feedback, autonomy, pace, conflict and more).</li>
+    <li><strong>Candidates</strong> share the manager style they do their best work under.</li>
+    <li>The <strong>fit engine</strong> surfaces areas of alignment, areas to discuss, and interview questions for both sides — without ever scoring a manager as "good" or "bad".</li>
+  </ol>
+</section>
+{% endblock %}

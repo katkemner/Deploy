@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "_macros.html" as f %}
+{% block title %}Candidate assessment · ManagerFit{% endblock %}
+{% block content %}
+<h1>Candidate assessment</h1>
+<p class="lede">Tell us the manager style you do your best work under. We'll match you to managers
+and show you exactly where you'll click — and what to ask about.</p>
+
+<form method="post" class="assessment">
+  <fieldset class="scale">
+    <legend>About you</legend>
+    <label class="field">Name <input type="text" name="name" required placeholder="Alex Rivera"></label>
+    <label class="field">Headline <input type="text" name="headline" placeholder="Senior Product Manager · fintech"></label>
+  </fieldset>
+
+  <h2>The manager you thrive under</h2>
+  {% for dim in dimensions %}
+    {{ f.scale(dim, dim.candidate_prompt) }}
+  {% endfor %}
+
+  {{ f.big_five(big_five) }}
+  {{ f.strengths_picker(strengths) }}
+
+  <button type="submit" class="btn primary">Create candidate profile</button>
+</form>
+{% endblock %}

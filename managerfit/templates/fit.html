@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Fit: {{ candidate.name }} × {{ manager.name }} · ManagerFit{% endblock %}
+{% block content %}
+<article class="fit">
+  <header class="fit-head">
+    <p class="eyebrow">Candidate-manager fit</p>
+    <h1>
+      <a href="{{ url_for('candidate_profile', token=candidate.id) }}">{{ candidate.name }}</a>
+      <span class="x">×</span>
+      <a href="{{ url_for('manager_profile', token=manager.id) }}">{{ manager.name }}</a>
+    </h1>
+    <div class="score {{ report.overall_fit | pct_class }}">
+      <span class="num">{{ report.overall_fit }}</span><span class="unit">/100</span>
+    </div>
+    <p class="headline">{{ report.headline }}</p>
+    <p class="disclaimer">This is a conversation starter, not a verdict. ManagerFit never scores a manager as
+      “good” or “bad” — only where two working styles align and where they're worth discussing.</p>
+  </header>
+
+  <section class="panel align">
+    <h2>✅ Strong alignment</h2>
+    {% if report.alignments %}
+      <ul class="fitlist">
+        {% for fit in report.alignments %}
+          <li>
+            <strong>{{ fit.dimension.name }}</strong>
+            <span>{{ fit.summary }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">No strong-alignment dimensions — see areas to discuss below.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel discuss">
+    <h2>💬 Areas to discuss</h2>
+    {% if report.to_discuss %}
+      <ul class="fitlist">
+        {% for fit in report.to_discuss %}
+          <li>
+            <strong>{{ fit.dimension.name }}</strong>
+            <span>{{ fit.summary }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Nothing major to flag — your styles are closely matched.</p>
+    {% endif %}
+  </section>
+
+  {% if report.suggested_questions('candidate') or report.suggested_questions('manager') %}
+  <section class="panel questions two-col">
+    <div>
+      <h2>Suggested questions — for the candidate to ask</h2>
+      <ul class="qlist">
+        {% for q in report.suggested_questions('candidate') %}<li>{{ q }}</li>{% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h2>Suggested questions — for the manager to ask</h2>
+      <ul class="qlist">
+        {% for q in report.suggested_questions('manager') %}<li>{{ q }}</li>{% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% endif %}
+</article>
+{% endblock %}

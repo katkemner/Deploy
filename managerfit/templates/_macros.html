@@ -1,0 +1,51 @@
+{% macro scale(dim, prompt) %}
+<fieldset class="scale">
+  <legend>{{ dim.name }}</legend>
+  <p class="prompt">{{ prompt }}</p>
+  <div class="scale-row">
+    <span class="anchor low">{{ dim.low_label }}</span>
+    <div class="radios">
+      {% for v in range(1, 6) %}
+        <label class="radio">
+          <input type="radio" name="dim_{{ dim.key }}" value="{{ v }}" {% if v == 3 %}checked{% endif %}>
+          <span>{{ v }}</span>
+        </label>
+      {% endfor %}
+    </div>
+    <span class="anchor high">{{ dim.high_label }}</span>
+  </div>
+</fieldset>
+{% endmacro %}
+
+{% macro big_five(traits) %}
+<fieldset class="scale bigfive">
+  <legend>Big Five snapshot</legend>
+  {% for key, label, desc in traits %}
+    <div class="bf-row">
+      <span class="bf-label" title="{{ desc }}">{{ label }}</span>
+      <div class="radios">
+        {% for v in range(1, 6) %}
+          <label class="radio">
+            <input type="radio" name="bf_{{ key }}" value="{{ v }}" {% if v == 3 %}checked{% endif %}>
+            <span>{{ v }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+</fieldset>
+{% endmacro %}
+
+{% macro strengths_picker(options) %}
+<fieldset class="scale strengths">
+  <legend>CliftonStrengths — pick up to 5 of your top themes</legend>
+  <div class="chips">
+    {% for s in options %}
+      <label class="chip">
+        <input type="checkbox" name="strengths" value="{{ s }}">
+        <span>{{ s }}</span>
+      </label>
+    {% endfor %}
+  </div>
+</fieldset>
+{% endmacro %}

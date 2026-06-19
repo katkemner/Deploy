@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "_macros.html" as f %}
+{% block title %}Manager assessment · ManagerFit{% endblock %}
+{% block content %}
+<h1>Manager assessment</h1>
+<p class="lede">Help candidates understand how you actually lead. There are no wrong answers —
+this maps your style, not your quality.</p>
+
+<form method="post" class="assessment">
+  <fieldset class="scale">
+    <legend>About you</legend>
+    <label class="field">Name <input type="text" name="name" required placeholder="Sarah Johnson"></label>
+    <label class="field">Role you hire for <input type="text" name="role" placeholder="Senior Product Manager"></label>
+    <label class="field">Company <input type="text" name="company" placeholder="Company XYZ"></label>
+    <label class="field">Leadership philosophy (1-2 sentences)
+      <textarea name="philosophy" rows="3" placeholder="I hire curious people, give them room to run, and stay close on outcomes."></textarea>
+    </label>
+  </fieldset>
+
+  <h2>How you lead</h2>
+  {% for dim in dimensions %}
+    {{ f.scale(dim, dim.manager_prompt) }}
+  {% endfor %}
+
+  {{ f.big_five(big_five) }}
+  {{ f.strengths_picker(strengths) }}
+
+  <button type="submit" class="btn primary">Create manager profile</button>
+</form>
+{% endblock %}
