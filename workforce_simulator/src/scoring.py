@@ -30,9 +30,15 @@ def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
 # ---------------------------------------------------------------------------
 
 def skill_coverage_score(covered_tasks: int, total_tasks: int) -> float:
-    """Percentage of tasks for which at least one member has the skill."""
+    """Percentage of tasks for which at least one member has the skill.
+
+    Used for overall coverage and, with the right counts, for required-only
+    or optional-only coverage. When ``total_tasks`` is 0 (e.g. no optional
+    tasks exist) coverage is treated as a perfect 100 - there is nothing
+    left uncovered.
+    """
     if total_tasks == 0:
-        return 0.0
+        return 100.0
     return _clamp(100.0 * covered_tasks / total_tasks)
 
 
@@ -147,33 +153,50 @@ def cost_efficiency_score(cost: float, min_cost: float, max_cost: float) -> floa
 # Final ranking score
 # ---------------------------------------------------------------------------
 
-# Weights for the overall ranking. They sum to 1.0.
-TOTAL_SCORE_WEIGHTS = {
-    "skill_coverage_score": 0.30,
-    "capacity_fit_score": 0.20,
-    "productivity_score": 0.20,
-    "workload_balance_score": 0.15,
-    "cost_efficiency_score": 0.10,
-    "low_risk_score": 0.05,
+# Default weights (already normalised to sum to 1.0). The config file can
+# override these; see ``config_loader.py``.
+DEFAULT_WEIGHTS = {
+    "skill_coverage": 0.30,
+    "capacity_fit": 0.20,
+    "productivity": 0.20,
+    "workload_balance": 0.15,
+    "cost_efficiency": 0.10,
+    "low_risk": 0.05,
 }
 
+# Maximum points subtracted from a team's total when *all* of its required
+# skills are missing. Scaled by the fraction of required skills missing, this
+# is the "major penalty" required tasks impose.
+REQUIRED_MISSING_PENALTY = 40.0
 
-def total_score(scores: Dict[str, float]) -> float:
+
+def total_score(
+    scores: Dict[str, float],
+    weights: Dict[str, float] = None,
+    missing_required_fraction: float = 0.0,
+) -> float:
     """Weighted total used to rank teams.
 
-    ``scores`` must contain every key in ``TOTAL_SCORE_WEIGHTS`` except
-    ``low_risk_score``, which is derived from ``risk_score`` here so the
-    caller only has to provide the raw risk.
+    ``scores`` supplies each component on a 0-100 scale. The ``skill_coverage``
+    component should be the *required* skill coverage so required skills drive
+    the ranking. ``weights`` are the (normalised) config weights; defaults are
+    used if omitted.
+
+    ``missing_required_fraction`` applies the major required-skill penalty:
+    the more required skills a team cannot cover, the more its total drops.
     """
+    if weights is None:
+        weights = DEFAULT_WEIGHTS
+
     low_risk = 100.0 - scores["risk_score"]
     components = {
-        "skill_coverage_score": scores["skill_coverage_score"],
-        "capacity_fit_score": scores["capacity_fit_score"],
-        "productivity_score": scores["productivity_score"],
-        "workload_balance_score": scores["workload_balance_score"],
-        "cost_efficiency_score": scores["cost_efficiency_score"],
-        "low_risk_score": low_risk,
+        "skill_coverage": scores["skill_coverage_score"],
+        "capacity_fit": scores["capacity_fit_score"],
+        "productivity": scores["productivity_score"],
+        "workload_balance": scores["workload_balance_score"],
+        "cost_efficiency": scores["cost_efficiency_score"],
+        "low_risk": low_risk,
     }
-    return _clamp(
-        sum(TOTAL_SCORE_WEIGHTS[key] * value for key, value in components.items())
-    )
+    base = sum(weights.get(key, 0.0) * value for key, value in components.items())
+    penalty = REQUIRED_MISSING_PENALTY * missing_required_fraction
+    return _clamp(base - penalty)

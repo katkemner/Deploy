@@ -1,14 +1,17 @@
 """Generate team combinations, simulate them, and rank the best.
 
-This is the orchestration layer that ties the simulator and scoring
-together:
+This is the orchestration layer that ties the simulator, scheduler, and
+scoring together:
 
-1. Enumerate every valid team (2-5 humans, 0-2 AI agents), skipping
+1. Enumerate every valid team within the configured size limits, skipping
    duplicates.
-2. Simulate each team to get its raw metrics.
+2. Simulate + schedule each team to get its raw metrics.
 3. Normalise cost across all teams into a cost-efficiency score.
-4. Compute the weighted ``total_score`` and return the top N.
-5. Attach a deterministic plain-English explanation to each top team.
+4. Compute the weighted ``total_score`` (using the config weights and the
+   required-skill penalty) and return the top N.
+5. When ``require_full_required_skill_coverage`` is on, invalid teams are
+   excluded from the top N; otherwise they are merely penalised.
+6. Attach a deterministic plain-English explanation to each top team.
 """
 
 from __future__ import annotations
@@ -17,29 +20,26 @@ from itertools import combinations
 from typing import List
 
 import scoring
+from config_loader import SimConfig
 from models import Team, Task, Worker
 from simulator import SimulationResult, simulate_team
 
 
-# Team size constraints from the brief.
-MIN_HUMANS = 2
-MAX_HUMANS = 5
-MIN_AI = 0
-MAX_AI = 2
-
-
-def generate_teams(humans: List[Worker], ai_agents: List[Worker]) -> List[Team]:
-    """Enumerate all valid, unique team combinations.
-
-    Combinations are inherently order-independent so duplicates only arise
-    if the input data contains repeated names; we de-dup defensively using
-    each team's signature.
-    """
+def generate_teams(
+    humans: List[Worker], ai_agents: List[Worker], config: SimConfig
+) -> List[Team]:
+    """Enumerate all valid, unique team combinations within size limits."""
     teams: List[Team] = []
     seen = set()
 
-    human_counts = range(MIN_HUMANS, min(MAX_HUMANS, len(humans)) + 1)
-    ai_counts = range(MIN_AI, min(MAX_AI, len(ai_agents)) + 1)
+    human_counts = range(
+        config.min_humans_per_team,
+        min(config.max_humans_per_team, len(humans)) + 1,
+    )
+    ai_counts = range(
+        config.min_ai_agents_per_team,
+        min(config.max_ai_agents_per_team, len(ai_agents)) + 1,
+    )
 
     for h_count in human_counts:
         for human_combo in combinations(humans, h_count):
@@ -58,16 +58,17 @@ def rank_teams(
     humans: List[Worker],
     ai_agents: List[Worker],
     tasks: List[Task],
+    config: SimConfig,
     top_n: int = 5,
 ) -> List[SimulationResult]:
     """Simulate every team and return the ``top_n`` ranked results."""
-    teams = generate_teams(humans, ai_agents)
-    results = [simulate_team(team, tasks) for team in teams]
-
+    teams = generate_teams(humans, ai_agents, config)
+    require_full = config.require_full_required_skill_coverage
+    results = [simulate_team(t, tasks, require_full) for t in teams]
     if not results:
         return []
 
-    # Cost efficiency needs the global cost range.
+    # Cost efficiency needs the global cost range across all teams.
     costs = [r.estimated_cost for r in results]
     min_cost, max_cost = min(costs), max(costs)
 
@@ -75,24 +76,32 @@ def rank_teams(
         r.cost_efficiency_score = round(
             scoring.cost_efficiency_score(r.estimated_cost, min_cost, max_cost), 2
         )
+        # Required coverage drives the skill_coverage slot so required skills
+        # dominate the ranking; the required penalty further punishes gaps.
         r.total_score = round(
             scoring.total_score(
                 {
-                    "skill_coverage_score": r.skill_coverage_score,
+                    "skill_coverage_score": r.required_skill_coverage_score,
                     "capacity_fit_score": r.capacity_fit_score,
                     "productivity_score": r.productivity_score,
                     "workload_balance_score": r.workload_balance_score,
                     "cost_efficiency_score": r.cost_efficiency_score,
                     "risk_score": r.risk_score,
-                }
+                },
+                weights=config.weights,
+                missing_required_fraction=r.missing_required_fraction,
             ),
             2,
         )
 
-    # Rank by total score. Ties broken deterministically: lower risk, then
-    # lower cost, then team signature.
-    results.sort(
+    # When full required coverage is mandatory, drop invalid teams entirely.
+    # Otherwise keep them - they are still ranked, just penalised, and sort
+    # below valid teams via the is_valid_team key.
+    pool = [r for r in results if r.is_valid_team] if require_full else results
+
+    pool.sort(
         key=lambda r: (
+            not r.is_valid_team,        # valid teams first
             -r.total_score,
             r.risk_score,
             r.estimated_cost,
@@ -100,78 +109,103 @@ def rank_teams(
         )
     )
 
-    top = results[:top_n]
+    top = pool[:top_n]
     for i, r in enumerate(top, start=1):
         r.rank = i
         r.plain_english_explanation = explain(r)
     return top
 
 
+# ---------------------------------------------------------------------------
+# Deterministic explanation
+# ---------------------------------------------------------------------------
+
 def explain(result: SimulationResult) -> str:
     """Build a deterministic, template-based explanation (no LLM).
 
-    The explanation cites the team's strongest reasons for its rank and
-    surfaces its biggest risk, using the numbers already computed.
+    Mentions, in order: why the team ranked where it did, required-skill
+    coverage, which AI agents helped and how, the biggest bottleneck, the
+    critical path, and the main tradeoff.
     """
     team = result.team
-    human_part = ", ".join(team.human_names) if team.human_names else "no humans"
-    if team.ai_names:
-        ai_part = " plus " + ", ".join(team.ai_names)
-    else:
-        ai_part = " with no AI agents"
-
-    parts: List[str] = []
-    parts.append(
-        f"Team {result.rank} ({human_part}{ai_part}) ranked "
-        f"#{result.rank} with a total score of {result.total_score}."
-    )
-    parts.append(
-        f"It covers {result.skill_coverage_score:.0f} percent of the "
-        f"required skills"
+    humans = ", ".join(team.human_names) if team.human_names else "no humans"
+    ai_part = (
+        " plus " + ", ".join(team.ai_names) if team.ai_names else " with no AI agents"
     )
 
-    # Capacity phrasing.
-    if result.capacity_fit_score >= 99:
-        parts[-1] += " and stays comfortably within available capacity"
-    elif result.capacity_fit_score >= 60:
-        parts[-1] += " and mostly fits within available capacity"
-    else:
-        parts[-1] += " but is stretched beyond its available capacity"
+    sentences: List[str] = []
 
-    # Highlight AI leverage if any agent picked up work.
-    ai_used = [
-        a.assigned_to
-        for a in result.assignments
-        if a.assigned_type == "ai_agent"
-    ]
-    if ai_used:
-        unique_ai = sorted(set(ai_used))
-        parts[-1] += (
-            f", using {', '.join(unique_ai)} to speed up part of the work"
-        )
-    parts[-1] += "."
+    # 1. Headline / why it ranked here.
+    sentences.append(
+        f"Team {result.rank} ({humans}{ai_part}) ranked #{result.rank} "
+        f"with a total score of {result.total_score}."
+    )
 
-    # Risk sentence.
-    if result.missing_skills:
-        parts.append(
-            "The main risk is missing coverage for: "
-            + ", ".join(result.missing_skills)
-            + "."
-        )
-    elif result.overloaded_members:
-        parts.append(
-            "The main risk is overload on: "
-            + ", ".join(result.overloaded_members)
-            + "."
-        )
-    elif result.workload_balance_score < 60:
-        parts.append(
-            "The main risk is uneven workload distribution across the team."
+    # 2. Required skill coverage.
+    if not result.missing_required_skills:
+        sentences.append(
+            f"All required skills are covered "
+            f"(required coverage {result.required_skill_coverage_score:.0f}%, "
+            f"optional {result.optional_skill_coverage_score:.0f}%)."
         )
     else:
-        parts.append(
-            f"Overall risk is low (risk score {result.risk_score}) and "
-            f"confidence is {result.confidence_score:.0f}."
+        sentences.append(
+            "It is missing required skill(s): "
+            + ", ".join(result.missing_required_skills)
+            + f" (required coverage only "
+            f"{result.required_skill_coverage_score:.0f}%)."
         )
 
-    return " ".join(parts)
+    # 3. How AI agents helped.
+    ai_tasks = [a for a in result.assignments if a.assigned_type == "ai_agent"]
+    if ai_tasks:
+        details = ", ".join(
+            f"{a.assigned_to} on {a.task}" for a in ai_tasks
+        )
+        sentences.append(
+            "AI agents sped up work by taking: " + details + "."
+        )
+    else:
+        sentences.append("No AI agents were used on this team.")
+
+    # 4. Biggest bottleneck = busiest member (longest serial workload).
+    if result.member_hours:
+        busiest = max(result.member_hours.items(), key=lambda kv: (kv[1], kv[0]))
+        if busiest[1] > 0:
+            sentences.append(
+                f"The biggest bottleneck is {busiest[0]} carrying "
+                f"{busiest[1]:.1f} hours of work."
+            )
+
+    # 5. Critical path.
+    if result.critical_path:
+        sentences.append(
+            "The critical path (driving the "
+            f"{result.estimated_duration:.0f}h duration) is: "
+            + " -> ".join(result.critical_path)
+            + "."
+        )
+
+    # 6. Main tradeoff: strongest vs weakest scored dimension.
+    sentences.append(_tradeoff_sentence(result))
+
+    return " ".join(sentences)
+
+
+def _tradeoff_sentence(result: SimulationResult) -> str:
+    """Describe the team's main tradeoff from its strongest/weakest scores."""
+    dimensions = {
+        "skill coverage": result.required_skill_coverage_score,
+        "cost efficiency": result.cost_efficiency_score,
+        "speed/productivity": result.productivity_score,
+        "workload balance": result.workload_balance_score,
+        "capacity fit": result.capacity_fit_score,
+    }
+    strongest = max(dimensions.items(), key=lambda kv: kv[1])
+    weakest = min(dimensions.items(), key=lambda kv: kv[1])
+    if strongest[0] == weakest[0]:
+        return "It is well balanced across all scoring dimensions."
+    return (
+        f"The main tradeoff is strong {strongest[0]} ({strongest[1]:.0f}) "
+        f"at the cost of weaker {weakest[0]} ({weakest[1]:.0f})."
+    )

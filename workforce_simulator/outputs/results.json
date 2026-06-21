@@ -5,37 +5,167 @@
       "Sarah",
       "Maya",
       "Priya",
-      "Jordan",
+      "Alex",
       "Casey"
     ],
     "ai_agents": [
       "AI Research Agent",
       "AI QA Reviewer"
     ],
-    "total_score": 78.52,
-    "skill_coverage_score": 80.0,
-    "capacity_fit_score": 87.01,
-    "estimated_cost": 10390.81,
-    "estimated_duration": 30.0,
-    "workload_balance_score": 81.42,
-    "productivity_score": 79.4,
-    "cost_efficiency_score": 53.0,
-    "risk_score": 25.43,
-    "confidence_score": 50.0,
-    "missing_skills": [
-      "API",
-      "React"
+    "is_valid_team": true,
+    "invalid_reasons": [],
+    "total_score": 70.33,
+    "skill_coverage_score": 100.0,
+    "required_skill_coverage_score": 100.0,
+    "optional_skill_coverage_score": 100.0,
+    "capacity_fit_score": 59.78,
+    "estimated_cost": 17415.81,
+    "estimated_duration": 96.5,
+    "critical_path": [
+      "Backend API",
+      "Frontend build",
+      "QA testing",
+      "Documentation"
     ],
+    "workload_balance_score": 42.88,
+    "productivity_score": 82.24,
+    "cost_efficiency_score": 19.56,
+    "risk_score": 29.28,
+    "confidence_score": 100.0,
+    "missing_required_skills": [],
+    "missing_optional_skills": [],
     "overloaded_members": [
+      "Alex",
       "Casey",
       "Maya",
+      "Priya",
       "Sarah"
+    ],
+    "task_schedule": [
+      {
+        "task": "User research",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Research",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 14.81,
+        "start_time": 0.0,
+        "finish_time": 14.81,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Data analysis",
+        "assigned_to": "Maya",
+        "required_skill": "Data",
+        "effort_hours": 30.0,
+        "adjusted_effort_hours": 30.0,
+        "start_time": 0.0,
+        "finish_time": 30.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Product strategy",
+        "assigned_to": "Priya",
+        "required_skill": "Strategy",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 0.0,
+        "finish_time": 15.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Prototype design",
+        "assigned_to": "Sarah",
+        "required_skill": "UX",
+        "effort_hours": 25.0,
+        "adjusted_effort_hours": 25.0,
+        "start_time": 0.0,
+        "finish_time": 25.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Frontend build",
+        "assigned_to": "Alex",
+        "required_skill": "React",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 35.0,
+        "finish_time": 70.0,
+        "dependencies": [
+          "Prototype design"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Backend API",
+        "assigned_to": "Alex",
+        "required_skill": "API",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 0.0,
+        "finish_time": 35.0,
+        "dependencies": [],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Database setup",
+        "assigned_to": "Casey",
+        "required_skill": "Database",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 20.0,
+        "start_time": 0.0,
+        "finish_time": 20.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "QA testing",
+        "assigned_to": "AI QA Reviewer",
+        "required_skill": "QA",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 15.38,
+        "start_time": 70.0,
+        "finish_time": 85.38,
+        "dependencies": [
+          "Frontend build",
+          "Backend API"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Documentation",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Writing",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 11.11,
+        "start_time": 85.38,
+        "finish_time": 96.5,
+        "dependencies": [
+          "QA testing"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Project coordination",
+        "assigned_to": "Priya",
+        "required_skill": "Coordination",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 15.0,
+        "finish_time": 30.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      }
     ],
     "task_assignments": [
       {
         "task": "User research",
         "required_skill": "Research",
         "priority": 1,
+        "is_required": true,
         "effort_hours": 20.0,
         "assigned_to": "AI Research Agent",
         "assigned_type": "ai_agent",
@@ -46,6 +176,7 @@
         "task": "Data analysis",
         "required_skill": "Data",
         "priority": 1,
+        "is_required": true,
         "effort_hours": 30.0,
         "assigned_to": "Maya",
         "assigned_type": "human",
@@ -56,6 +187,7 @@
         "task": "Product strategy",
         "required_skill": "Strategy",
         "priority": 1,
+        "is_required": false,
         "effort_hours": 15.0,
         "assigned_to": "Priya",
         "assigned_type": "human",
@@ -66,6 +198,7 @@
         "task": "Prototype design",
         "required_skill": "UX",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 25.0,
         "assigned_to": "Sarah",
         "assigned_type": "human",
@@ -76,26 +209,29 @@
         "task": "Frontend build",
         "required_skill": "React",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
       },
       {
         "task": "Backend API",
         "required_skill": "API",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
       },
       {
         "task": "Database setup",
         "required_skill": "Database",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 20.0,
         "assigned_to": "Casey",
         "assigned_type": "human",
@@ -106,6 +242,7 @@
         "task": "QA testing",
         "required_skill": "QA",
         "priority": 3,
+        "is_required": true,
         "effort_hours": 20.0,
         "assigned_to": "AI QA Reviewer",
         "assigned_type": "ai_agent",
@@ -116,6 +253,7 @@
         "task": "Documentation",
         "required_skill": "Writing",
         "priority": 3,
+        "is_required": false,
         "effort_hours": 15.0,
         "assigned_to": "AI Research Agent",
         "assigned_type": "ai_agent",
@@ -126,52 +264,184 @@
         "task": "Project coordination",
         "required_skill": "Coordination",
         "priority": 3,
+        "is_required": false,
         "effort_hours": 15.0,
-        "assigned_to": "Jordan",
+        "assigned_to": "Priya",
         "assigned_type": "human",
         "assigned_hours": 15.0,
         "missing_skill": false
       }
     ],
-    "plain_english_explanation": "Team 1 (Sarah, Maya, Priya, Jordan, Casey plus AI Research Agent, AI QA Reviewer) ranked #1 with a total score of 78.52. It covers 80 percent of the required skills and mostly fits within available capacity, using AI QA Reviewer, AI Research Agent to speed up part of the work. The main risk is missing coverage for: API, React."
+    "plain_english_explanation": "Team 1 (Sarah, Maya, Priya, Alex, Casey plus AI Research Agent, AI QA Reviewer) ranked #1 with a total score of 70.33. All required skills are covered (required coverage 100%, optional 100%). AI agents sped up work by taking: AI Research Agent on User research, AI QA Reviewer on QA testing, AI Research Agent on Documentation. The biggest bottleneck is Alex carrying 70.0 hours of work. The critical path (driving the 96h duration) is: Backend API -> Frontend build -> QA testing -> Documentation. The main tradeoff is strong skill coverage (100) at the cost of weaker cost efficiency (20)."
   },
   {
     "rank": 2,
     "team_members": [
-      "Maya",
-      "Priya",
+      "Sarah",
+      "John",
+      "Alex",
       "Jordan",
-      "Morgan",
       "Casey"
     ],
     "ai_agents": [
       "AI Research Agent",
       "AI QA Reviewer"
     ],
-    "total_score": 78.02,
-    "skill_coverage_score": 80.0,
-    "capacity_fit_score": 85.65,
-    "estimated_cost": 10340.81,
-    "estimated_duration": 30.0,
-    "workload_balance_score": 80.5,
-    "productivity_score": 78.84,
-    "cost_efficiency_score": 53.24,
-    "risk_score": 25.61,
-    "confidence_score": 50.0,
-    "missing_skills": [
-      "API",
-      "React"
+    "is_valid_team": true,
+    "invalid_reasons": [],
+    "total_score": 70.3,
+    "skill_coverage_score": 90.0,
+    "required_skill_coverage_score": 100.0,
+    "optional_skill_coverage_score": 66.67,
+    "capacity_fit_score": 61.75,
+    "estimated_cost": 15740.81,
+    "estimated_duration": 96.5,
+    "critical_path": [
+      "Backend API",
+      "Frontend build",
+      "QA testing",
+      "Documentation"
+    ],
+    "workload_balance_score": 41.09,
+    "productivity_score": 78.06,
+    "cost_efficiency_score": 27.53,
+    "risk_score": 31.57,
+    "confidence_score": 75.0,
+    "missing_required_skills": [],
+    "missing_optional_skills": [
+      "Strategy"
     ],
     "overloaded_members": [
+      "Alex",
       "Casey",
-      "Maya",
-      "Morgan"
+      "John",
+      "Sarah"
+    ],
+    "task_schedule": [
+      {
+        "task": "User research",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Research",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 14.81,
+        "start_time": 0.0,
+        "finish_time": 14.81,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Data analysis",
+        "assigned_to": "Casey",
+        "required_skill": "Data",
+        "effort_hours": 30.0,
+        "adjusted_effort_hours": 30.0,
+        "start_time": 0.0,
+        "finish_time": 30.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Product strategy",
+        "assigned_to": null,
+        "required_skill": "Strategy",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 0.0,
+        "start_time": null,
+        "finish_time": null,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Prototype design",
+        "assigned_to": "Sarah",
+        "required_skill": "UX",
+        "effort_hours": 25.0,
+        "adjusted_effort_hours": 25.0,
+        "start_time": 0.0,
+        "finish_time": 25.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Frontend build",
+        "assigned_to": "Alex",
+        "required_skill": "React",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 35.0,
+        "finish_time": 70.0,
+        "dependencies": [
+          "Prototype design"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Backend API",
+        "assigned_to": "Alex",
+        "required_skill": "API",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 0.0,
+        "finish_time": 35.0,
+        "dependencies": [],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Database setup",
+        "assigned_to": "John",
+        "required_skill": "Database",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 20.0,
+        "start_time": 0.0,
+        "finish_time": 20.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "QA testing",
+        "assigned_to": "AI QA Reviewer",
+        "required_skill": "QA",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 15.38,
+        "start_time": 70.0,
+        "finish_time": 85.38,
+        "dependencies": [
+          "Frontend build",
+          "Backend API"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Documentation",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Writing",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 11.11,
+        "start_time": 85.38,
+        "finish_time": 96.5,
+        "dependencies": [
+          "QA testing"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Project coordination",
+        "assigned_to": "Jordan",
+        "required_skill": "Coordination",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 0.0,
+        "finish_time": 15.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      }
     ],
     "task_assignments": [
       {
         "task": "User research",
         "required_skill": "Research",
         "priority": 1,
+        "is_required": true,
         "effort_hours": 20.0,
         "assigned_to": "AI Research Agent",
         "assigned_type": "ai_agent",
@@ -182,8 +452,9 @@
         "task": "Data analysis",
         "required_skill": "Data",
         "priority": 1,
+        "is_required": true,
         "effort_hours": 30.0,
-        "assigned_to": "Maya",
+        "assigned_to": "Casey",
         "assigned_type": "human",
         "assigned_hours": 30.0,
         "missing_skill": false
@@ -192,18 +463,20 @@
         "task": "Product strategy",
         "required_skill": "Strategy",
         "priority": 1,
+        "is_required": false,
         "effort_hours": 15.0,
-        "assigned_to": "Priya",
-        "assigned_type": "human",
-        "assigned_hours": 15.0,
-        "missing_skill": false
+        "assigned_to": null,
+        "assigned_type": null,
+        "assigned_hours": 0.0,
+        "missing_skill": true
       },
       {
         "task": "Prototype design",
         "required_skill": "UX",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 25.0,
-        "assigned_to": "Morgan",
+        "assigned_to": "Sarah",
         "assigned_type": "human",
         "assigned_hours": 25.0,
         "missing_skill": false
@@ -212,28 +485,31 @@
         "task": "Frontend build",
         "required_skill": "React",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
       },
       {
         "task": "Backend API",
         "required_skill": "API",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
       },
       {
         "task": "Database setup",
         "required_skill": "Database",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 20.0,
-        "assigned_to": "Casey",
+        "assigned_to": "John",
         "assigned_type": "human",
         "assigned_hours": 20.0,
         "missing_skill": false
@@ -242,6 +518,7 @@
         "task": "QA testing",
         "required_skill": "QA",
         "priority": 3,
+        "is_required": true,
         "effort_hours": 20.0,
         "assigned_to": "AI QA Reviewer",
         "assigned_type": "ai_agent",
@@ -252,6 +529,7 @@
         "task": "Documentation",
         "required_skill": "Writing",
         "priority": 3,
+        "is_required": false,
         "effort_hours": 15.0,
         "assigned_to": "AI Research Agent",
         "assigned_type": "ai_agent",
@@ -262,6 +540,7 @@
         "task": "Project coordination",
         "required_skill": "Coordination",
         "priority": 3,
+        "is_required": false,
         "effort_hours": 15.0,
         "assigned_to": "Jordan",
         "assigned_type": "human",
@@ -269,46 +548,175 @@
         "missing_skill": false
       }
     ],
-    "plain_english_explanation": "Team 2 (Maya, Priya, Jordan, Morgan, Casey plus AI Research Agent, AI QA Reviewer) ranked #2 with a total score of 78.02. It covers 80 percent of the required skills and mostly fits within available capacity, using AI QA Reviewer, AI Research Agent to speed up part of the work. The main risk is missing coverage for: API, React."
+    "plain_english_explanation": "Team 2 (Sarah, John, Alex, Jordan, Casey plus AI Research Agent, AI QA Reviewer) ranked #2 with a total score of 70.3. All required skills are covered (required coverage 100%, optional 67%). AI agents sped up work by taking: AI Research Agent on User research, AI QA Reviewer on QA testing, AI Research Agent on Documentation. The biggest bottleneck is Alex carrying 70.0 hours of work. The critical path (driving the 96h duration) is: Backend API -> Frontend build -> QA testing -> Documentation. The main tradeoff is strong skill coverage (100) at the cost of weaker cost efficiency (28)."
   },
   {
     "rank": 3,
     "team_members": [
       "Sarah",
       "Maya",
-      "Devon",
+      "John",
       "Priya",
-      "Casey"
+      "Alex"
     ],
     "ai_agents": [
-      "AI Project Planner",
-      "AI Research Agent"
+      "AI Research Agent",
+      "AI QA Reviewer"
     ],
-    "total_score": 77.9,
-    "skill_coverage_score": 80.0,
-    "capacity_fit_score": 85.8,
-    "estimated_cost": 10578.89,
-    "estimated_duration": 30.0,
-    "workload_balance_score": 81.1,
-    "productivity_score": 79.07,
-    "cost_efficiency_score": 52.1,
-    "risk_score": 29.07,
-    "confidence_score": 50.0,
-    "missing_skills": [
-      "API",
-      "React"
+    "is_valid_team": true,
+    "invalid_reasons": [],
+    "total_score": 70.29,
+    "skill_coverage_score": 100.0,
+    "required_skill_coverage_score": 100.0,
+    "optional_skill_coverage_score": 100.0,
+    "capacity_fit_score": 59.32,
+    "estimated_cost": 17315.81,
+    "estimated_duration": 96.5,
+    "critical_path": [
+      "Backend API",
+      "Frontend build",
+      "QA testing",
+      "Documentation"
     ],
+    "workload_balance_score": 43.04,
+    "productivity_score": 82.15,
+    "cost_efficiency_score": 20.04,
+    "risk_score": 29.25,
+    "confidence_score": 100.0,
+    "missing_required_skills": [],
+    "missing_optional_skills": [],
     "overloaded_members": [
-      "Casey",
-      "Devon",
+      "Alex",
+      "John",
       "Maya",
+      "Priya",
       "Sarah"
+    ],
+    "task_schedule": [
+      {
+        "task": "User research",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Research",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 14.81,
+        "start_time": 0.0,
+        "finish_time": 14.81,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Data analysis",
+        "assigned_to": "Maya",
+        "required_skill": "Data",
+        "effort_hours": 30.0,
+        "adjusted_effort_hours": 30.0,
+        "start_time": 0.0,
+        "finish_time": 30.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Product strategy",
+        "assigned_to": "Priya",
+        "required_skill": "Strategy",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 0.0,
+        "finish_time": 15.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Prototype design",
+        "assigned_to": "Sarah",
+        "required_skill": "UX",
+        "effort_hours": 25.0,
+        "adjusted_effort_hours": 25.0,
+        "start_time": 0.0,
+        "finish_time": 25.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Frontend build",
+        "assigned_to": "Alex",
+        "required_skill": "React",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 35.0,
+        "finish_time": 70.0,
+        "dependencies": [
+          "Prototype design"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Backend API",
+        "assigned_to": "Alex",
+        "required_skill": "API",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 0.0,
+        "finish_time": 35.0,
+        "dependencies": [],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Database setup",
+        "assigned_to": "John",
+        "required_skill": "Database",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 20.0,
+        "start_time": 0.0,
+        "finish_time": 20.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "QA testing",
+        "assigned_to": "AI QA Reviewer",
+        "required_skill": "QA",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 15.38,
+        "start_time": 70.0,
+        "finish_time": 85.38,
+        "dependencies": [
+          "Frontend build",
+          "Backend API"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Documentation",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Writing",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 11.11,
+        "start_time": 85.38,
+        "finish_time": 96.5,
+        "dependencies": [
+          "QA testing"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Project coordination",
+        "assigned_to": "Priya",
+        "required_skill": "Coordination",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 15.0,
+        "finish_time": 30.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      }
     ],
     "task_assignments": [
       {
         "task": "User research",
         "required_skill": "Research",
         "priority": 1,
+        "is_required": true,
         "effort_hours": 20.0,
         "assigned_to": "AI Research Agent",
         "assigned_type": "ai_agent",
@@ -319,6 +727,7 @@
         "task": "Data analysis",
         "required_skill": "Data",
         "priority": 1,
+        "is_required": true,
         "effort_hours": 30.0,
         "assigned_to": "Maya",
         "assigned_type": "human",
@@ -329,6 +738,7 @@
         "task": "Product strategy",
         "required_skill": "Strategy",
         "priority": 1,
+        "is_required": false,
         "effort_hours": 15.0,
         "assigned_to": "Priya",
         "assigned_type": "human",
@@ -339,6 +749,7 @@
         "task": "Prototype design",
         "required_skill": "UX",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 25.0,
         "assigned_to": "Sarah",
         "assigned_type": "human",
@@ -349,28 +760,31 @@
         "task": "Frontend build",
         "required_skill": "React",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
       },
       {
         "task": "Backend API",
         "required_skill": "API",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
       },
       {
         "task": "Database setup",
         "required_skill": "Database",
         "priority": 2,
+        "is_required": true,
         "effort_hours": 20.0,
-        "assigned_to": "Casey",
+        "assigned_to": "John",
         "assigned_type": "human",
         "assigned_hours": 20.0,
         "missing_skill": false
@@ -379,278 +793,7 @@
         "task": "QA testing",
         "required_skill": "QA",
         "priority": 3,
-        "effort_hours": 20.0,
-        "assigned_to": "Devon",
-        "assigned_type": "human",
-        "assigned_hours": 20.0,
-        "missing_skill": false
-      },
-      {
-        "task": "Documentation",
-        "required_skill": "Writing",
-        "priority": 3,
-        "effort_hours": 15.0,
-        "assigned_to": "AI Research Agent",
-        "assigned_type": "ai_agent",
-        "assigned_hours": 11.11,
-        "missing_skill": false
-      },
-      {
-        "task": "Project coordination",
-        "required_skill": "Coordination",
-        "priority": 3,
-        "effort_hours": 15.0,
-        "assigned_to": "AI Project Planner",
-        "assigned_type": "ai_agent",
-        "assigned_hours": 12.0,
-        "missing_skill": false
-      }
-    ],
-    "plain_english_explanation": "Team 3 (Sarah, Maya, Devon, Priya, Casey plus AI Project Planner, AI Research Agent) ranked #3 with a total score of 77.9. It covers 80 percent of the required skills and mostly fits within available capacity, using AI Project Planner, AI Research Agent to speed up part of the work. The main risk is missing coverage for: API, React."
-  },
-  {
-    "rank": 4,
-    "team_members": [
-      "Maya",
-      "Devon",
-      "Priya",
-      "Morgan",
-      "Casey"
-    ],
-    "ai_agents": [
-      "AI Project Planner",
-      "AI Research Agent"
-    ],
-    "total_score": 77.41,
-    "skill_coverage_score": 80.0,
-    "capacity_fit_score": 84.45,
-    "estimated_cost": 10528.89,
-    "estimated_duration": 30.0,
-    "workload_balance_score": 80.32,
-    "productivity_score": 78.51,
-    "cost_efficiency_score": 52.34,
-    "risk_score": 29.22,
-    "confidence_score": 50.0,
-    "missing_skills": [
-      "API",
-      "React"
-    ],
-    "overloaded_members": [
-      "Casey",
-      "Devon",
-      "Maya",
-      "Morgan"
-    ],
-    "task_assignments": [
-      {
-        "task": "User research",
-        "required_skill": "Research",
-        "priority": 1,
-        "effort_hours": 20.0,
-        "assigned_to": "AI Research Agent",
-        "assigned_type": "ai_agent",
-        "assigned_hours": 14.81,
-        "missing_skill": false
-      },
-      {
-        "task": "Data analysis",
-        "required_skill": "Data",
-        "priority": 1,
-        "effort_hours": 30.0,
-        "assigned_to": "Maya",
-        "assigned_type": "human",
-        "assigned_hours": 30.0,
-        "missing_skill": false
-      },
-      {
-        "task": "Product strategy",
-        "required_skill": "Strategy",
-        "priority": 1,
-        "effort_hours": 15.0,
-        "assigned_to": "Priya",
-        "assigned_type": "human",
-        "assigned_hours": 15.0,
-        "missing_skill": false
-      },
-      {
-        "task": "Prototype design",
-        "required_skill": "UX",
-        "priority": 2,
-        "effort_hours": 25.0,
-        "assigned_to": "Morgan",
-        "assigned_type": "human",
-        "assigned_hours": 25.0,
-        "missing_skill": false
-      },
-      {
-        "task": "Frontend build",
-        "required_skill": "React",
-        "priority": 2,
-        "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
-      },
-      {
-        "task": "Backend API",
-        "required_skill": "API",
-        "priority": 2,
-        "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
-      },
-      {
-        "task": "Database setup",
-        "required_skill": "Database",
-        "priority": 2,
-        "effort_hours": 20.0,
-        "assigned_to": "Casey",
-        "assigned_type": "human",
-        "assigned_hours": 20.0,
-        "missing_skill": false
-      },
-      {
-        "task": "QA testing",
-        "required_skill": "QA",
-        "priority": 3,
-        "effort_hours": 20.0,
-        "assigned_to": "Devon",
-        "assigned_type": "human",
-        "assigned_hours": 20.0,
-        "missing_skill": false
-      },
-      {
-        "task": "Documentation",
-        "required_skill": "Writing",
-        "priority": 3,
-        "effort_hours": 15.0,
-        "assigned_to": "AI Research Agent",
-        "assigned_type": "ai_agent",
-        "assigned_hours": 11.11,
-        "missing_skill": false
-      },
-      {
-        "task": "Project coordination",
-        "required_skill": "Coordination",
-        "priority": 3,
-        "effort_hours": 15.0,
-        "assigned_to": "AI Project Planner",
-        "assigned_type": "ai_agent",
-        "assigned_hours": 12.0,
-        "missing_skill": false
-      }
-    ],
-    "plain_english_explanation": "Team 4 (Maya, Devon, Priya, Morgan, Casey plus AI Project Planner, AI Research Agent) ranked #4 with a total score of 77.41. It covers 80 percent of the required skills and mostly fits within available capacity, using AI Project Planner, AI Research Agent to speed up part of the work. The main risk is missing coverage for: API, React."
-  },
-  {
-    "rank": 5,
-    "team_members": [
-      "Maya",
-      "Priya",
-      "Jordan",
-      "Casey"
-    ],
-    "ai_agents": [
-      "AI Research Agent",
-      "AI QA Reviewer"
-    ],
-    "total_score": 75.82,
-    "skill_coverage_score": 70.0,
-    "capacity_fit_score": 88.46,
-    "estimated_cost": 8390.81,
-    "estimated_duration": 30.0,
-    "workload_balance_score": 80.98,
-    "productivity_score": 75.8,
-    "cost_efficiency_score": 62.52,
-    "risk_score": 28.64,
-    "confidence_score": 25.0,
-    "missing_skills": [
-      "API",
-      "React",
-      "UX"
-    ],
-    "overloaded_members": [
-      "Casey",
-      "Maya"
-    ],
-    "task_assignments": [
-      {
-        "task": "User research",
-        "required_skill": "Research",
-        "priority": 1,
-        "effort_hours": 20.0,
-        "assigned_to": "AI Research Agent",
-        "assigned_type": "ai_agent",
-        "assigned_hours": 14.81,
-        "missing_skill": false
-      },
-      {
-        "task": "Data analysis",
-        "required_skill": "Data",
-        "priority": 1,
-        "effort_hours": 30.0,
-        "assigned_to": "Maya",
-        "assigned_type": "human",
-        "assigned_hours": 30.0,
-        "missing_skill": false
-      },
-      {
-        "task": "Product strategy",
-        "required_skill": "Strategy",
-        "priority": 1,
-        "effort_hours": 15.0,
-        "assigned_to": "Priya",
-        "assigned_type": "human",
-        "assigned_hours": 15.0,
-        "missing_skill": false
-      },
-      {
-        "task": "Prototype design",
-        "required_skill": "UX",
-        "priority": 2,
-        "effort_hours": 25.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
-      },
-      {
-        "task": "Frontend build",
-        "required_skill": "React",
-        "priority": 2,
-        "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
-      },
-      {
-        "task": "Backend API",
-        "required_skill": "API",
-        "priority": 2,
-        "effort_hours": 35.0,
-        "assigned_to": null,
-        "assigned_type": null,
-        "assigned_hours": 0.0,
-        "missing_skill": true
-      },
-      {
-        "task": "Database setup",
-        "required_skill": "Database",
-        "priority": 2,
-        "effort_hours": 20.0,
-        "assigned_to": "Casey",
-        "assigned_type": "human",
-        "assigned_hours": 20.0,
-        "missing_skill": false
-      },
-      {
-        "task": "QA testing",
-        "required_skill": "QA",
-        "priority": 3,
+        "is_required": true,
         "effort_hours": 20.0,
         "assigned_to": "AI QA Reviewer",
         "assigned_type": "ai_agent",
@@ -661,6 +804,7 @@
         "task": "Documentation",
         "required_skill": "Writing",
         "priority": 3,
+        "is_required": false,
         "effort_hours": 15.0,
         "assigned_to": "AI Research Agent",
         "assigned_type": "ai_agent",
@@ -671,6 +815,281 @@
         "task": "Project coordination",
         "required_skill": "Coordination",
         "priority": 3,
+        "is_required": false,
+        "effort_hours": 15.0,
+        "assigned_to": "Priya",
+        "assigned_type": "human",
+        "assigned_hours": 15.0,
+        "missing_skill": false
+      }
+    ],
+    "plain_english_explanation": "Team 3 (Sarah, Maya, John, Priya, Alex plus AI Research Agent, AI QA Reviewer) ranked #3 with a total score of 70.29. All required skills are covered (required coverage 100%, optional 100%). AI agents sped up work by taking: AI Research Agent on User research, AI QA Reviewer on QA testing, AI Research Agent on Documentation. The biggest bottleneck is Alex carrying 70.0 hours of work. The critical path (driving the 96h duration) is: Backend API -> Frontend build -> QA testing -> Documentation. The main tradeoff is strong skill coverage (100) at the cost of weaker cost efficiency (20)."
+  },
+  {
+    "rank": 4,
+    "team_members": [
+      "Sarah",
+      "Maya",
+      "Alex",
+      "Jordan",
+      "Casey"
+    ],
+    "ai_agents": [
+      "AI Research Agent",
+      "AI QA Reviewer"
+    ],
+    "is_valid_team": true,
+    "invalid_reasons": [],
+    "total_score": 70.26,
+    "skill_coverage_score": 100.0,
+    "required_skill_coverage_score": 100.0,
+    "optional_skill_coverage_score": 100.0,
+    "capacity_fit_score": 59.78,
+    "estimated_cost": 16740.81,
+    "estimated_duration": 96.5,
+    "critical_path": [
+      "Backend API",
+      "Frontend build",
+      "QA testing",
+      "Documentation"
+    ],
+    "workload_balance_score": 39.71,
+    "productivity_score": 81.96,
+    "cost_efficiency_score": 22.77,
+    "risk_score": 26.34,
+    "confidence_score": 100.0,
+    "missing_required_skills": [],
+    "missing_optional_skills": [],
+    "overloaded_members": [
+      "Alex",
+      "Casey",
+      "Maya",
+      "Sarah"
+    ],
+    "task_schedule": [
+      {
+        "task": "User research",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Research",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 14.81,
+        "start_time": 0.0,
+        "finish_time": 14.81,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Data analysis",
+        "assigned_to": "Maya",
+        "required_skill": "Data",
+        "effort_hours": 30.0,
+        "adjusted_effort_hours": 30.0,
+        "start_time": 0.0,
+        "finish_time": 30.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Product strategy",
+        "assigned_to": "Maya",
+        "required_skill": "Strategy",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 30.0,
+        "finish_time": 45.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Prototype design",
+        "assigned_to": "Sarah",
+        "required_skill": "UX",
+        "effort_hours": 25.0,
+        "adjusted_effort_hours": 25.0,
+        "start_time": 0.0,
+        "finish_time": 25.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Frontend build",
+        "assigned_to": "Alex",
+        "required_skill": "React",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 35.0,
+        "finish_time": 70.0,
+        "dependencies": [
+          "Prototype design"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Backend API",
+        "assigned_to": "Alex",
+        "required_skill": "API",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 0.0,
+        "finish_time": 35.0,
+        "dependencies": [],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Database setup",
+        "assigned_to": "Casey",
+        "required_skill": "Database",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 20.0,
+        "start_time": 0.0,
+        "finish_time": 20.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "QA testing",
+        "assigned_to": "AI QA Reviewer",
+        "required_skill": "QA",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 15.38,
+        "start_time": 70.0,
+        "finish_time": 85.38,
+        "dependencies": [
+          "Frontend build",
+          "Backend API"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Documentation",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Writing",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 11.11,
+        "start_time": 85.38,
+        "finish_time": 96.5,
+        "dependencies": [
+          "QA testing"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Project coordination",
+        "assigned_to": "Jordan",
+        "required_skill": "Coordination",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 0.0,
+        "finish_time": 15.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      }
+    ],
+    "task_assignments": [
+      {
+        "task": "User research",
+        "required_skill": "Research",
+        "priority": 1,
+        "is_required": true,
+        "effort_hours": 20.0,
+        "assigned_to": "AI Research Agent",
+        "assigned_type": "ai_agent",
+        "assigned_hours": 14.81,
+        "missing_skill": false
+      },
+      {
+        "task": "Data analysis",
+        "required_skill": "Data",
+        "priority": 1,
+        "is_required": true,
+        "effort_hours": 30.0,
+        "assigned_to": "Maya",
+        "assigned_type": "human",
+        "assigned_hours": 30.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Product strategy",
+        "required_skill": "Strategy",
+        "priority": 1,
+        "is_required": false,
+        "effort_hours": 15.0,
+        "assigned_to": "Maya",
+        "assigned_type": "human",
+        "assigned_hours": 15.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Prototype design",
+        "required_skill": "UX",
+        "priority": 2,
+        "is_required": true,
+        "effort_hours": 25.0,
+        "assigned_to": "Sarah",
+        "assigned_type": "human",
+        "assigned_hours": 25.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Frontend build",
+        "required_skill": "React",
+        "priority": 2,
+        "is_required": true,
+        "effort_hours": 35.0,
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Backend API",
+        "required_skill": "API",
+        "priority": 2,
+        "is_required": true,
+        "effort_hours": 35.0,
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Database setup",
+        "required_skill": "Database",
+        "priority": 2,
+        "is_required": true,
+        "effort_hours": 20.0,
+        "assigned_to": "Casey",
+        "assigned_type": "human",
+        "assigned_hours": 20.0,
+        "missing_skill": false
+      },
+      {
+        "task": "QA testing",
+        "required_skill": "QA",
+        "priority": 3,
+        "is_required": true,
+        "effort_hours": 20.0,
+        "assigned_to": "AI QA Reviewer",
+        "assigned_type": "ai_agent",
+        "assigned_hours": 15.38,
+        "missing_skill": false
+      },
+      {
+        "task": "Documentation",
+        "required_skill": "Writing",
+        "priority": 3,
+        "is_required": false,
+        "effort_hours": 15.0,
+        "assigned_to": "AI Research Agent",
+        "assigned_type": "ai_agent",
+        "assigned_hours": 11.11,
+        "missing_skill": false
+      },
+      {
+        "task": "Project coordination",
+        "required_skill": "Coordination",
+        "priority": 3,
+        "is_required": false,
         "effort_hours": 15.0,
         "assigned_to": "Jordan",
         "assigned_type": "human",
@@ -678,6 +1097,280 @@
         "missing_skill": false
       }
     ],
-    "plain_english_explanation": "Team 5 (Maya, Priya, Jordan, Casey plus AI Research Agent, AI QA Reviewer) ranked #5 with a total score of 75.82. It covers 70 percent of the required skills and mostly fits within available capacity, using AI QA Reviewer, AI Research Agent to speed up part of the work. The main risk is missing coverage for: API, React, UX."
+    "plain_english_explanation": "Team 4 (Sarah, Maya, Alex, Jordan, Casey plus AI Research Agent, AI QA Reviewer) ranked #4 with a total score of 70.26. All required skills are covered (required coverage 100%, optional 100%). AI agents sped up work by taking: AI Research Agent on User research, AI QA Reviewer on QA testing, AI Research Agent on Documentation. The biggest bottleneck is Alex carrying 70.0 hours of work. The critical path (driving the 96h duration) is: Backend API -> Frontend build -> QA testing -> Documentation. The main tradeoff is strong skill coverage (100) at the cost of weaker cost efficiency (23)."
+  },
+  {
+    "rank": 5,
+    "team_members": [
+      "Sarah",
+      "Maya",
+      "John",
+      "Alex",
+      "Jordan"
+    ],
+    "ai_agents": [
+      "AI Research Agent",
+      "AI QA Reviewer"
+    ],
+    "is_valid_team": true,
+    "invalid_reasons": [],
+    "total_score": 70.22,
+    "skill_coverage_score": 100.0,
+    "required_skill_coverage_score": 100.0,
+    "optional_skill_coverage_score": 100.0,
+    "capacity_fit_score": 59.32,
+    "estimated_cost": 16640.81,
+    "estimated_duration": 96.5,
+    "critical_path": [
+      "Backend API",
+      "Frontend build",
+      "QA testing",
+      "Documentation"
+    ],
+    "workload_balance_score": 39.82,
+    "productivity_score": 81.86,
+    "cost_efficiency_score": 23.25,
+    "risk_score": 26.32,
+    "confidence_score": 100.0,
+    "missing_required_skills": [],
+    "missing_optional_skills": [],
+    "overloaded_members": [
+      "Alex",
+      "John",
+      "Maya",
+      "Sarah"
+    ],
+    "task_schedule": [
+      {
+        "task": "User research",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Research",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 14.81,
+        "start_time": 0.0,
+        "finish_time": 14.81,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Data analysis",
+        "assigned_to": "Maya",
+        "required_skill": "Data",
+        "effort_hours": 30.0,
+        "adjusted_effort_hours": 30.0,
+        "start_time": 0.0,
+        "finish_time": 30.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Product strategy",
+        "assigned_to": "Maya",
+        "required_skill": "Strategy",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 30.0,
+        "finish_time": 45.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Prototype design",
+        "assigned_to": "Sarah",
+        "required_skill": "UX",
+        "effort_hours": 25.0,
+        "adjusted_effort_hours": 25.0,
+        "start_time": 0.0,
+        "finish_time": 25.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "Frontend build",
+        "assigned_to": "Alex",
+        "required_skill": "React",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 35.0,
+        "finish_time": 70.0,
+        "dependencies": [
+          "Prototype design"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Backend API",
+        "assigned_to": "Alex",
+        "required_skill": "API",
+        "effort_hours": 35.0,
+        "adjusted_effort_hours": 35.0,
+        "start_time": 0.0,
+        "finish_time": 35.0,
+        "dependencies": [],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Database setup",
+        "assigned_to": "John",
+        "required_skill": "Database",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 20.0,
+        "start_time": 0.0,
+        "finish_time": 20.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      },
+      {
+        "task": "QA testing",
+        "assigned_to": "AI QA Reviewer",
+        "required_skill": "QA",
+        "effort_hours": 20.0,
+        "adjusted_effort_hours": 15.38,
+        "start_time": 70.0,
+        "finish_time": 85.38,
+        "dependencies": [
+          "Frontend build",
+          "Backend API"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Documentation",
+        "assigned_to": "AI Research Agent",
+        "required_skill": "Writing",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 11.11,
+        "start_time": 85.38,
+        "finish_time": 96.5,
+        "dependencies": [
+          "QA testing"
+        ],
+        "is_on_critical_path": true
+      },
+      {
+        "task": "Project coordination",
+        "assigned_to": "Jordan",
+        "required_skill": "Coordination",
+        "effort_hours": 15.0,
+        "adjusted_effort_hours": 15.0,
+        "start_time": 0.0,
+        "finish_time": 15.0,
+        "dependencies": [],
+        "is_on_critical_path": false
+      }
+    ],
+    "task_assignments": [
+      {
+        "task": "User research",
+        "required_skill": "Research",
+        "priority": 1,
+        "is_required": true,
+        "effort_hours": 20.0,
+        "assigned_to": "AI Research Agent",
+        "assigned_type": "ai_agent",
+        "assigned_hours": 14.81,
+        "missing_skill": false
+      },
+      {
+        "task": "Data analysis",
+        "required_skill": "Data",
+        "priority": 1,
+        "is_required": true,
+        "effort_hours": 30.0,
+        "assigned_to": "Maya",
+        "assigned_type": "human",
+        "assigned_hours": 30.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Product strategy",
+        "required_skill": "Strategy",
+        "priority": 1,
+        "is_required": false,
+        "effort_hours": 15.0,
+        "assigned_to": "Maya",
+        "assigned_type": "human",
+        "assigned_hours": 15.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Prototype design",
+        "required_skill": "UX",
+        "priority": 2,
+        "is_required": true,
+        "effort_hours": 25.0,
+        "assigned_to": "Sarah",
+        "assigned_type": "human",
+        "assigned_hours": 25.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Frontend build",
+        "required_skill": "React",
+        "priority": 2,
+        "is_required": true,
+        "effort_hours": 35.0,
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Backend API",
+        "required_skill": "API",
+        "priority": 2,
+        "is_required": true,
+        "effort_hours": 35.0,
+        "assigned_to": "Alex",
+        "assigned_type": "human",
+        "assigned_hours": 35.0,
+        "missing_skill": false
+      },
+      {
+        "task": "Database setup",
+        "required_skill": "Database",
+        "priority": 2,
+        "is_required": true,
+        "effort_hours": 20.0,
+        "assigned_to": "John",
+        "assigned_type": "human",
+        "assigned_hours": 20.0,
+        "missing_skill": false
+      },
+      {
+        "task": "QA testing",
+        "required_skill": "QA",
+        "priority": 3,
+        "is_required": true,
+        "effort_hours": 20.0,
+        "assigned_to": "AI QA Reviewer",
+        "assigned_type": "ai_agent",
+        "assigned_hours": 15.38,
+        "missing_skill": false
+      },
+      {
+        "task": "Documentation",
+        "required_skill": "Writing",
+        "priority": 3,
+        "is_required": false,
+        "effort_hours": 15.0,
+        "assigned_to": "AI Research Agent",
+        "assigned_type": "ai_agent",
+        "assigned_hours": 11.11,
+        "missing_skill": false
+      },
+      {
+        "task": "Project coordination",
+        "required_skill": "Coordination",
+        "priority": 3,
+        "is_required": false,
+        "effort_hours": 15.0,
+        "assigned_to": "Jordan",
+        "assigned_type": "human",
+        "assigned_hours": 15.0,
+        "missing_skill": false
+      }
+    ],
+    "plain_english_explanation": "Team 5 (Sarah, Maya, John, Alex, Jordan plus AI Research Agent, AI QA Reviewer) ranked #5 with a total score of 70.22. All required skills are covered (required coverage 100%, optional 100%). AI agents sped up work by taking: AI Research Agent on User research, AI QA Reviewer on QA testing, AI Research Agent on Documentation. The biggest bottleneck is Alex carrying 70.0 hours of work. The critical path (driving the 96h duration) is: Backend API -> Frontend build -> QA testing -> Documentation. The main tradeoff is strong skill coverage (100) at the cost of weaker cost efficiency (23)."
   }
 ]

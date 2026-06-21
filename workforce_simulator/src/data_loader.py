@@ -68,17 +68,49 @@ def load_ai_agents(path: str) -> List[Worker]:
     return workers
 
 
+def _parse_bool(raw) -> bool:
+    """Interpret a CSV truthy value (``true``/``1``/``yes``) as a bool."""
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"true", "1", "yes", "y"}
+
+
+def _split_dependencies(raw) -> List[str]:
+    """Parse the ``dependency_ids`` column into a list of task names."""
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return []
+    text = str(raw).strip()
+    if not text or text.lower() == "nan":
+        return []
+    return [part.strip() for part in text.split("|") if part.strip()]
+
+
 def load_tasks(path: str) -> List[Task]:
-    """Load project tasks from ``project_tasks.csv``."""
+    """Load project tasks from ``project_tasks.csv``.
+
+    Supports the dependency and required/optional columns added in v2.
+    These columns are optional: if a CSV omits them, tasks default to no
+    dependencies and ``is_required = True`` so older data still loads.
+    """
     df = pd.read_csv(path)
     tasks: List[Task] = []
     for _, row in df.iterrows():
+        dependencies = (
+            _split_dependencies(row["dependency_ids"])
+            if "dependency_ids" in df.columns
+            else []
+        )
+        is_required = (
+            _parse_bool(row["is_required"]) if "is_required" in df.columns else True
+        )
         tasks.append(
             Task(
                 task=str(row["task"]).strip(),
                 required_skill=str(row["required_skill"]).strip(),
                 effort_hours=float(row["effort_hours"]),
                 priority=int(row["priority"]),
+                dependencies=dependencies,
+                is_required=is_required,
             )
         )
     return tasks

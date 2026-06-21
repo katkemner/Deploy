@@ -74,38 +74,77 @@ class Worker:
 
 @dataclass
 class Task:
-    """A single piece of project work requiring one skill."""
+    """A single piece of project work requiring one skill.
+
+    ``dependencies`` holds the names of tasks that must finish before this
+    one can start. ``is_required`` marks whether the skill is mandatory: a
+    team that cannot cover a required skill is heavily penalised (and may be
+    declared invalid), whereas an uncovered optional skill only costs a
+    little score.
+    """
 
     task: str
     required_skill: str
     effort_hours: float
     priority: int   # 1 == highest priority
+    dependencies: List[str] = field(default_factory=list)
+    is_required: bool = True
 
 
 @dataclass
 class Assignment:
-    """The result of giving a task to a worker (or failing to)."""
+    """The result of giving a task to a worker (or failing to).
+
+    Also carries the schedule produced by the critical-path scheduler:
+    ``start_time`` / ``finish_time`` (in project hours from time 0) and
+    whether the task sits on the critical path.
+    """
 
     task: str
     required_skill: str
     effort_hours: float
     priority: int
+    is_required: bool = True
+    dependencies: List[str] = field(default_factory=list)
     assigned_to: Optional[str] = None     # worker name, or None if unassigned
     assigned_type: Optional[str] = None   # HUMAN / AI_AGENT, or None
-    assigned_hours: float = 0.0           # hours consumed on the worker
+    assigned_hours: float = 0.0           # adjusted hours consumed on the worker
     missing_skill: bool = False           # True when no worker had the skill
+    # Schedule fields (filled in by the scheduler):
+    start_time: Optional[float] = None
+    finish_time: Optional[float] = None
+    is_on_critical_path: bool = False
 
     def as_dict(self) -> dict:
-        """Plain dict suitable for JSON / CSV export."""
+        """Plain dict for the ``task_assignments`` export section."""
         return {
             "task": self.task,
             "required_skill": self.required_skill,
             "priority": self.priority,
+            "is_required": self.is_required,
             "effort_hours": self.effort_hours,
             "assigned_to": self.assigned_to,
             "assigned_type": self.assigned_type,
             "assigned_hours": round(self.assigned_hours, 2),
             "missing_skill": self.missing_skill,
+        }
+
+    def schedule_dict(self) -> dict:
+        """Plain dict for the ``task_schedule`` export section."""
+        return {
+            "task": self.task,
+            "assigned_to": self.assigned_to,
+            "required_skill": self.required_skill,
+            "effort_hours": self.effort_hours,
+            "adjusted_effort_hours": round(self.assigned_hours, 2),
+            "start_time": (
+                round(self.start_time, 2) if self.start_time is not None else None
+            ),
+            "finish_time": (
+                round(self.finish_time, 2) if self.finish_time is not None else None
+            ),
+            "dependencies": list(self.dependencies),
+            "is_on_critical_path": self.is_on_critical_path,
         }
 
 

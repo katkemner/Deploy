@@ -1,0 +1,16 @@
+{
+  "_comment": "Scoring weights and team constraints for the simulator. Weights are relative and are normalised to sum to 1.0 at load time, so you can use any scale (these sum to 100). Edit and re-run; no code changes needed.",
+  "weights": {
+    "skill_coverage": 30,
+    "capacity_fit": 20,
+    "productivity": 20,
+    "workload_balance": 15,
+    "cost_efficiency": 10,
+    "low_risk": 5
+  },
+  "require_full_required_skill_coverage": true,
+  "max_humans_per_team": 5,
+  "min_humans_per_team": 2,
+  "max_ai_agents_per_team": 2,
+  "min_ai_agents_per_team": 0
+}

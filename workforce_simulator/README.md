@@ -1,4 +1,4 @@
-# Workforce Simulator (MVP)
+# Workforce Simulator (MVP v2)
 
 A command-line simulation engine that helps a manager compare different
 combinations of **people + AI agents** for a project and predict outcomes
@@ -10,6 +10,11 @@ no frontend, no database, and no API keys. All scoring is done with
 **deterministic formulas** — no LLM is used to invent numbers, so the same
 inputs always produce the same ranked output.
 
+**New in v2:** required vs optional task skills, task dependencies,
+resource-constrained **critical-path scheduling**, a **configurable**
+weights/constraints file, and richer per-team output (validity, schedule,
+critical path).
+
 ---
 
 ## What it does
@@ -17,12 +22,15 @@ inputs always produce the same ranked output.
 Given a pool of employees, a pool of AI agents, and a list of project
 tasks, the simulator:
 
-1. Generates every valid team combination (**2–5 humans, 0–2 AI agents**).
+1. Generates every valid team combination within the configured size
+   limits (default **2–5 humans, 0–2 AI agents**).
 2. Assigns each task to the best available team member.
-3. Scores each team across several metrics.
-4. Ranks the teams with a weighted total score.
-5. Prints the **top 5 teams** and saves full results to JSON and CSV, each
-   with a plain-English explanation of *why* it ranked where it did.
+3. **Schedules** the assigned tasks, respecting task dependencies and each
+   worker's availability, to compute duration and the critical path.
+4. Scores each team across several metrics and marks it valid or invalid.
+5. Ranks the teams with a configurable weighted total score.
+6. Prints the **top 5 valid teams** and saves full results to JSON and CSV,
+   each with a plain-English explanation of *why* it ranked where it did.
 
 ---
 
@@ -32,197 +40,246 @@ tasks, the simulator:
 workforce_simulator/
 ├── README.md
 ├── requirements.txt
+├── config/
+│   └── scoring_weights.json   # weights + team constraints (editable)
 ├── data/
-│   ├── employees.csv        # the human talent pool
-│   ├── ai_agents.csv        # the available AI agents
-│   └── project_tasks.csv    # the work to be done
+│   ├── employees.csv          # the human talent pool
+│   ├── ai_agents.csv          # the available AI agents
+│   └── project_tasks.csv      # the work, with deps + required flags
 ├── src/
-│   ├── main.py              # CLI entry point (run this)
-│   ├── data_loader.py       # reads CSVs into model objects
-│   ├── models.py            # Worker / Task / Team / Assignment models
-│   ├── simulator.py         # task assignment + per-team metrics
-│   ├── scoring.py           # deterministic scoring formulas
-│   ├── optimizer.py         # team generation, ranking, explanations
-│   └── exporter.py          # writes results.json / results.csv
+│   ├── main.py                # CLI entry point (run this)
+│   ├── config_loader.py       # loads scoring_weights.json
+│   ├── data_loader.py         # reads CSVs into model objects
+│   ├── models.py              # Worker / Task / Team / Assignment models
+│   ├── simulator.py           # task assignment + per-team metrics
+│   ├── scheduler.py           # critical-path scheduling
+│   ├── scoring.py             # deterministic scoring formulas
+│   ├── optimizer.py           # team generation, ranking, explanations
+│   └── exporter.py            # writes results.json / results.csv
 ├── outputs/
-│   ├── results.json         # full results (generated)
-│   └── results.csv          # flat summary (generated)
+│   ├── results.json           # full results (generated)
+│   └── results.csv            # flat summary (generated)
 └── tests/
-    └── test_simulator.py    # unit tests
+    └── test_simulator.py      # unit tests
 ```
 
 ---
 
-## Install
+## Install & run
 
-Requires **Python 3.8+**. The only third-party dependency is `pandas`
-(used for CSV reading/writing).
+Requires **Python 3.8+**. The only third-party dependency is `pandas`.
 
 ```bash
 cd workforce_simulator
 pip install -r requirements.txt
-```
-
-## Run
-
-```bash
 python src/main.py
 ```
 
-This prints the top 5 teams to the terminal and writes
-`outputs/results.json` and `outputs/results.csv`.
+This prints the top 5 teams and writes `outputs/results.json` and
+`outputs/results.csv`.
 
-## Test
+### Run the tests
 
 ```bash
 # with pytest
 python -m pytest tests/
 
-# or without pytest installed
+# or, without pytest installed
 python tests/test_simulator.py
 ```
+
+The suite covers required-skill coverage, team validity (valid vs invalid),
+dependency ordering, critical-path calculation, configurable weights, and
+that the top-5 ranking excludes invalid teams when full required coverage is
+mandatory.
 
 ---
 
 ## The data files
 
 ### `employees.csv` — the human talent pool
-| field | meaning |
-|---|---|
-| `name` | employee name |
-| `role` | job title (informational) |
-| `skills` | `\|`-separated skills, e.g. `Python\|API\|Database` |
-| `capacity_hours` | total hours available for this project window |
-| `workload_hours` | hours already committed to other work |
-| `cost_rate` | cost per hour |
-| `quality_score` | quality rating, 0–10 |
+`name, role, skills, capacity_hours, workload_hours, cost_rate, quality_score`
 
-A human's **available hours** = `capacity_hours − workload_hours`, and
-their `speed_multiplier` is always `1.0`.
+A human's **available hours** = `capacity_hours − workload_hours`, and their
+`speed_multiplier` is always `1.0`.
 
 ### `ai_agents.csv` — the AI agents
-| field | meaning |
-|---|---|
-| `name` | agent name |
-| `agent_type` | agent category (informational) |
-| `capabilities` | `\|`-separated skills the agent can do |
-| `capacity_hours` | hours the agent can work |
-| `cost_rate` | cost per hour |
-| `quality_score` | quality rating, 0–10 |
-| `speed_multiplier` | how much faster than a human (e.g. `1.3` = 30% faster) |
+`name, agent_type, capabilities, capacity_hours, cost_rate, quality_score, speed_multiplier`
 
-AI agents have **no pre-existing workload**, so their available hours equal
-their capacity. Because they work faster, a task needing `E` effort hours
-consumes only `E / speed_multiplier` of an agent's time.
+AI agents have **no pre-existing workload**, so available hours equal
+capacity. Because they work faster, a task needing `E` effort hours consumes
+only `E / speed_multiplier` of an agent's time.
 
 ### `project_tasks.csv` — the work
+`task, required_skill, effort_hours, priority, dependency_ids, is_required`
+
 | field | meaning |
 |---|---|
-| `task` | task name |
+| `task` | task name (also used as its dependency id) |
 | `required_skill` | the single skill needed to do it |
-| `effort_hours` | nominal effort (at human speed) |
+| `effort_hours` | nominal effort at human speed |
 | `priority` | `1` = highest priority, assigned first |
+| `dependency_ids` | `\|`-separated **task names** that must finish first (blank = none) |
+| `is_required` | `true` = mandatory skill; `false` = optional |
 
-To simulate a different scenario, just edit these CSVs and re-run — no code
+To simulate a different scenario, edit these CSVs and re-run — no code
 changes needed.
 
 ---
 
-## How tasks are assigned
+## Required vs optional skills
 
-Tasks are processed **highest priority first**. For each task the simulator
-finds every team member whose skills include the required skill, then picks
-the best one using a weighted candidate score:
+- **Required** tasks (`is_required = true`) represent skills the project
+  *must* have. A team that cannot cover a required skill receives a **major
+  score penalty**, and — if `require_full_required_skill_coverage` is on —
+  is marked **invalid** and excluded from the ranking.
+- **Optional** tasks (`is_required = false`) are nice-to-haves. Covering
+  them *improves* the score (via productivity and the optional-coverage
+  metric) but their absence never invalidates a team.
 
-- **40% quality** — prefer higher-quality workers
-- **20% cost efficiency** — prefer cheaper workers
-- **20% speed** — prefer faster workers (rewards AI agents)
-- **20% remaining capacity** — prefer workers who still have free time
+The ranking's skill-coverage component is driven by **required** coverage, so
+required skills dominate which teams rise to the top.
 
-That last factor is what spreads work across the team instead of dumping
-everything on the single "best" person. If **no** team member has the
-required skill, the task is recorded as a **missing-skill risk** and left
-unassigned.
+## Task dependencies
+
+Each task may depend on one or more earlier tasks via `dependency_ids`
+(referenced by task name). In the sample data:
+
+- *Frontend build* depends on *Prototype design*
+- *QA testing* depends on *Frontend build* and *Backend API*
+- *Documentation* depends on *QA testing*
+
+A task cannot start until **all** of its dependencies have finished.
+
+## Critical path & scheduling
+
+Duration is no longer "total effort ÷ capacity". Instead `scheduler.py`
+builds a real schedule:
+
+1. Tasks are processed in dependency (topological) order, ties broken by
+   priority then name for determinism.
+2. Each task starts at the **later** of (a) when all its dependencies
+   finish and (b) when its assigned worker becomes free — a worker is a
+   single resource and can only do one task at a time.
+3. Project **duration** = the latest task finish time.
+4. The **critical path** is recovered by walking backwards from the
+   last-finishing task through whatever constrained each task's start —
+   either a dependency *or* a worker being busy.
+
+That last point matters: if one person is the only holder of two skills,
+their tasks serialise and *they* become the critical path even without a
+formal dependency between those tasks. The schedule exposes `start_time`,
+`finish_time`, and `is_on_critical_path` per task.
+
+---
+
+## Configurable scoring (`config/scoring_weights.json`)
+
+```json
+{
+  "weights": {
+    "skill_coverage": 30,
+    "capacity_fit": 20,
+    "productivity": 20,
+    "workload_balance": 15,
+    "cost_efficiency": 10,
+    "low_risk": 5
+  },
+  "require_full_required_skill_coverage": true,
+  "max_humans_per_team": 5,
+  "min_humans_per_team": 2,
+  "max_ai_agents_per_team": 2,
+  "min_ai_agents_per_team": 0
+}
+```
+
+- **`weights`** — relative importance of each scoring dimension. They are
+  normalised to sum to 1.0 at load time, so any scale works. Raise
+  `cost_efficiency` to favour cheaper teams, raise `workload_balance` to
+  punish overloaded stars, etc.
+- **`require_full_required_skill_coverage`** — when `true`, teams missing any
+  required skill are invalid and excluded from the top 5. Set to `false` to
+  keep them in the running (still penalised, just ranked lower).
+- **Team constraints** — `min/max_humans_per_team` and
+  `min/max_ai_agents_per_team` control which combinations are generated.
+
+Edit the file and re-run `python src/main.py`; no code changes are needed.
 
 ---
 
 ## How the scores are calculated
 
-All scores are on a **0–100 scale where higher is better**, except
-`risk_score` where higher means *more risk*. The exact formulas live in
-[`src/scoring.py`](src/scoring.py) and are intentionally simple and
-readable.
+All scores are 0–100 (higher is better) **except `risk_score`** (higher =
+worse). The formulas live in [`src/scoring.py`](src/scoring.py).
 
 | score | meaning | how it's computed |
 |---|---|---|
-| **skill_coverage_score** | % of tasks the team can actually staff | `covered_tasks / total_tasks × 100` |
-| **capacity_fit_score** | are people within their available hours? | `100 × (1 − overflow_hours / assigned_hours)` where overflow is work beyond each member's capacity |
-| **estimated_cost** | total project cost | Σ `assigned_hours × member.cost_rate` |
-| **estimated_duration** | calendar time, assuming parallel work | the busiest member's assigned hours (the critical path) |
-| **workload_balance_score** | how evenly work is spread | based on the spread (std dev) of member utilisation; even = high |
-| **productivity_score** | overall throughput quality | `0.40×coverage + 0.20×quality + 0.20×speed + 0.20×capacity_fit` |
-| **risk_score** | total risk (higher = worse) | `40×missing_skills + 25×overload + 20×imbalance + 15×low_coverage` |
+| **skill_coverage_score** | % of *all* tasks the team can staff | `covered / total × 100` |
+| **required_skill_coverage_score** | % of *required* tasks covered (drives ranking) | required covered / required total |
+| **optional_skill_coverage_score** | % of *optional* tasks covered | optional covered / optional total |
+| **capacity_fit_score** | are individuals within their hours? | `100 × (1 − overflow_hours / assigned_hours)` |
+| **estimated_cost** | total project cost | Σ `assigned_hours × cost_rate` |
+| **estimated_duration** | calendar time from the schedule | last task finish time (critical path) |
+| **workload_balance_score** | how evenly work is spread | from the spread of member utilisation |
+| **productivity_score** | throughput quality | `0.40×coverage + 0.20×quality + 0.20×speed + 0.20×capacity_fit` |
+| **risk_score** | total risk (higher = worse) | `40×missing + 25×overload + 20×imbalance + 15×low_coverage` |
 | **confidence_score** | how much to trust the result | starts from coverage, −15 per missing skill |
 | **cost_efficiency_score** | cheapest team = 100, dearest = 0 | min-max normalised cost across all teams |
 
 ### Final ranking (`total_score`)
 
-Teams are ranked by a weighted blend (the weights sum to 100%):
-
-| weight | component |
-|---|---|
-| 30% | skill coverage |
-| 20% | capacity fit |
-| 20% | productivity |
-| 15% | workload balance |
-| 10% | cost efficiency |
-| 5%  | low risk (`100 − risk_score`) |
-
-The top 5 teams by `total_score` are returned. Ties are broken
-deterministically (lower risk, then lower cost) so output is reproducible.
+`total_score` is the weighted blend of the dimensions above (using the
+**config weights**), where the skill-coverage slot uses **required** coverage.
+On top of that, a **major required-skill penalty** (up to 40 points, scaled
+by the fraction of required skills missing) is subtracted. Teams are then
+sorted valid-first, then by total score (ties broken by lower risk, then
+lower cost) for reproducible output.
 
 ---
 
 ## How to read the output
 
-Terminal output (and `results.json`) gives, for each of the top 5 teams:
+For each top team (terminal and `results.json`):
 
-- the **humans** and **AI agents** on the team
-- every metric above
-- **missing_skills** — skills no member could cover (the biggest risk)
-- **overloaded_members** — people assigned more than their available hours
-- **task_assignments** — who got each task and for how many hours
-- a **plain_english_explanation**, e.g.:
+- **is_valid_team / invalid_reasons** — whether it covers all required
+  skills (and why not, if invalid).
+- the metrics above, plus **missing_required_skills** /
+  **missing_optional_skills** and **overloaded_members**.
+- **critical_path** — the ordered chain of tasks driving the duration.
+- **task_schedule** — per task: `assigned_to`, `effort_hours`,
+  `adjusted_effort_hours`, `start_time`, `finish_time`, `dependencies`,
+  `is_on_critical_path`.
+- **task_assignments** — who got each task.
+- a deterministic **plain_english_explanation** covering why it ranked
+  where it did, required-skill coverage, which AI agents helped and how, the
+  biggest bottleneck, the critical path, and the main tradeoff.
 
-  > *"Team 1 ranked #1 with a total score of 78.52. It covers 80 percent of
-  > the required skills and mostly fits within available capacity, using
-  > AI QA Reviewer, AI Research Agent to speed up part of the work. The main
-  > risk is missing coverage for: API, React."*
+### Interpreting invalid teams
 
-`results.csv` is the same information flattened for spreadsheets, with task
-assignments collapsed into one column.
+With `require_full_required_skill_coverage: true` (the default), any team
+that cannot staff a required skill is **invalid** and never appears in the
+top 5 — even if it would otherwise score well. Flip the flag to `false` to
+see those teams ranked (penalised) alongside the rest, which is useful for
+spotting *what skill you are short of* and how close an almost-complete team
+gets.
 
-> **Tip:** With the sample data, the highest-ranked teams trade a little
-> skill coverage (they omit the only React engineer) for much better cost,
-> balance, and capacity fit. That is the weighting working as designed —
-> adjust the weights in `scoring.py` if your priorities differ.
+### Changing team constraints
+
+Edit `min/max_humans_per_team` and `min/max_ai_agents_per_team` in the
+config. For example, set both human bounds to `3` to compare only 3-person
+human teams, or raise `max_ai_agents_per_team` to explore heavier AI use.
 
 ---
 
 ## What to build next
 
-This MVP proves the simulation core. Sensible next steps:
-
-1. **Multi-skill tasks & dependencies** — tasks needing several skills, or
-   that must finish before others start (real critical-path scheduling).
-2. **Partial / shared task assignment** — let two members split one task
-   instead of one owner per task.
-3. **Configurable weights & constraints** — pass the ranking weights, team
-   size limits, and budget caps as CLI flags or a config file.
-4. **Smarter optimisation** — the current engine brute-forces all teams;
-   add pruning or a heuristic search to scale to larger pools.
-5. **Calibration** — tune the formulas against real historical project
-   data so the scores predict real outcomes.
-6. **API + frontend** — wrap the engine in a small service and build the
+1. **Multi-skill tasks** — tasks needing several skills at once.
+2. **Partial / shared task assignment** — let members split one task.
+3. **Smarter scheduling** — true critical-path method with slack, plus
+   look-ahead list scheduling instead of pure topological order.
+4. **Pruning / heuristic search** — the engine still brute-forces all
+   teams; add pruning to scale to larger pools.
+5. **Calibration** — tune the formulas against real historical data.
+6. **API + frontend** — wrap the engine in a service and build the
    manager-facing UI for interactive "what-if" comparisons.
 ```
