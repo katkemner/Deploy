@@ -1,0 +1,4 @@
+# Workforce Simulator MVP dependencies.
+# Kept intentionally minimal. pandas is used for convenient CSV
+# loading and output. Everything else is from the Python standard library.
+pandas>=1.3

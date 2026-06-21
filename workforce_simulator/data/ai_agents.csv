@@ -1,0 +1,4 @@
+name,agent_type,capabilities,capacity_hours,cost_rate,quality_score,speed_multiplier
+AI Project Planner,Planning,Planning|Coordination|Scheduling,40,20,7,1.25
+AI Research Agent,Research,Research|Market|Writing,40,15,7,1.35
+AI QA Reviewer,QA,QA|Testing|Documentation,40,18,7,1.30

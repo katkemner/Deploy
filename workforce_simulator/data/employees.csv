@@ -1,0 +1,11 @@
+name,role,skills,capacity_hours,workload_hours,cost_rate,quality_score
+Sarah,UX Designer,UX|Research|Prototype,30,10,80,8
+Maya,Data Analyst,Data|Strategy|Research,25,5,90,9
+John,Backend Engineer,Python|API|Database,35,20,100,8
+Devon,QA Engineer,QA|Testing|Automation,30,12,75,7
+Priya,Product Manager,Planning|Strategy|Coordination,30,15,110,8
+Alex,Frontend Engineer,React|UX|API,35,18,95,8
+Jordan,Operations Lead,Operations|Planning|Coordination,30,8,85,7
+Taylor,Researcher,Research|Market|Writing,25,6,70,8
+Morgan,Designer,UX|Brand|Prototype,28,10,78,7
+Casey,Data Engineer,Python|Data|Database,32,16,105,8

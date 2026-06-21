@@ -1,0 +1,11 @@
+task,required_skill,effort_hours,priority
+User research,Research,20,1
+Data analysis,Data,30,1
+Product strategy,Strategy,15,1
+Prototype design,UX,25,2
+Frontend build,React,35,2
+Backend API,API,35,2
+Database setup,Database,20,2
+QA testing,QA,20,3
+Documentation,Writing,15,3
+Project coordination,Coordination,15,3

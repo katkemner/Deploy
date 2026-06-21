@@ -1,0 +1,252 @@
+"""Run a single team through the project and compute its raw metrics.
+
+The simulator does two things for one team:
+
+1. **Assign tasks** to the best available member (``assign_tasks``).
+2. **Compute metrics** from those assignments (``simulate_team``).
+
+The only score it cannot finish here is ``cost_efficiency_score`` and the
+final ``total_score``: those need to compare against *all* teams, so they
+are added later by the optimizer. Everything in this module is
+deterministic.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, List
+
+import scoring
+from models import Assignment, Task, Team, Worker, AI_AGENT
+
+
+# ---------------------------------------------------------------------------
+# Candidate selection
+# ---------------------------------------------------------------------------
+
+def _candidate_score(
+    worker: Worker,
+    task: Task,
+    remaining_hours: float,
+) -> float:
+    """Score how good ``worker`` is for ``task`` right now.
+
+    Combines four factors the brief asks for (all workers here already
+    match the skill):
+
+    * quality     - higher quality workers preferred (40%)
+    * cost        - cheaper workers preferred (20%)
+    * speed       - faster workers preferred (20%)
+    * capacity    - workers with spare capacity preferred (20%)
+
+    The capacity factor is what makes assignment spread work across the
+    team instead of piling everything on the single "best" person.
+    """
+    quality = worker.quality_score / 10.0                 # 0..1
+    # Cost efficiency: cheapest plausible rate (~70) -> ~1, expensive -> lower.
+    cost_efficiency = min(1.0, 70.0 / worker.cost_rate)   # 0..1
+    speed = min(1.0, worker.speed_multiplier / 1.5)       # 0..1
+    needed = worker.effective_hours_for(task.effort_hours)
+    # Capacity factor: 1.0 if the worker can fully absorb the task, scaling
+    # down toward 0 the more over capacity the task would push them.
+    if needed <= 0:
+        capacity = 1.0
+    else:
+        capacity = max(0.0, min(1.0, remaining_hours / needed))
+
+    return 0.40 * quality + 0.20 * cost_efficiency + 0.20 * speed + 0.20 * capacity
+
+
+def assign_tasks(team: Team, tasks: List[Task]) -> List[Assignment]:
+    """Assign every task to the best available team member.
+
+    Tasks are processed in priority order (priority 1 first). For each task
+    we find members whose skills match, then pick the one with the highest
+    candidate score given how much capacity they have left. A task with no
+    skilled member is recorded as a missing-skill risk.
+
+    Returns one ``Assignment`` per task. As a side effect it does **not**
+    mutate the workers; remaining capacity is tracked in a local dict so
+    the same ``Team`` objects can be reused across simulations.
+    """
+    members = team.members
+    # Track remaining capacity locally, keyed by worker name.
+    remaining: Dict[str, float] = {w.name: w.available_hours for w in members}
+
+    # Stable ordering: by priority, then by task name for determinism.
+    ordered = sorted(tasks, key=lambda t: (t.priority, t.task))
+
+    assignments: List[Assignment] = []
+    for task in ordered:
+        candidates = [w for w in members if w.has_skill(task.required_skill)]
+        if not candidates:
+            assignments.append(
+                Assignment(
+                    task=task.task,
+                    required_skill=task.required_skill,
+                    effort_hours=task.effort_hours,
+                    priority=task.priority,
+                    missing_skill=True,
+                )
+            )
+            continue
+
+        # Pick the best candidate. Ties broken by name for determinism.
+        best = max(
+            candidates,
+            key=lambda w: (_candidate_score(w, task, remaining[w.name]), w.name),
+        )
+        hours = best.effective_hours_for(task.effort_hours)
+        remaining[best.name] -= hours
+        assignments.append(
+            Assignment(
+                task=task.task,
+                required_skill=task.required_skill,
+                effort_hours=task.effort_hours,
+                priority=task.priority,
+                assigned_to=best.name,
+                assigned_type=best.type,
+                assigned_hours=hours,
+            )
+        )
+
+    # Restore the original task order in the returned list for readability.
+    by_name = {a.task: a for a in assignments}
+    return [by_name[t.task] for t in tasks]
+
+
+# ---------------------------------------------------------------------------
+# Simulation result
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SimulationResult:
+    """All raw metrics for one team (pre-ranking).
+
+    ``cost_efficiency_score`` and ``total_score`` are filled in later by
+    the optimizer once every team has been simulated.
+    """
+
+    team: Team
+    assignments: List[Assignment]
+    skill_coverage_score: float
+    capacity_fit_score: float
+    estimated_cost: float
+    estimated_duration: float
+    workload_balance_score: float
+    productivity_score: float
+    risk_score: float
+    confidence_score: float
+    missing_skills: List[str]
+    overloaded_members: List[str]
+    # Filled in during ranking:
+    cost_efficiency_score: float = 0.0
+    total_score: float = 0.0
+    rank: int = 0
+    plain_english_explanation: str = ""
+    # Per-member assigned hours, handy for explanations / debugging.
+    member_hours: Dict[str, float] = field(default_factory=dict)
+
+
+def simulate_team(team: Team, tasks: List[Task]) -> SimulationResult:
+    """Assign tasks to ``team`` and compute every per-team metric."""
+    members = team.members
+    assignments = assign_tasks(team, tasks)
+
+    total_tasks = len(tasks)
+    covered = sum(1 for a in assignments if not a.missing_skill)
+    missing_skills = sorted(
+        {a.required_skill for a in assignments if a.missing_skill}
+    )
+
+    # Per-member assigned hours.
+    member_hours: Dict[str, float] = {w.name: 0.0 for w in members}
+    for a in assignments:
+        if a.assigned_to is not None:
+            member_hours[a.assigned_to] += a.assigned_hours
+
+    total_assigned = sum(member_hours.values())
+
+    # Overloaded = assigned more than they had available.
+    overloaded_members = sorted(
+        w.name for w in members
+        if member_hours[w.name] > w.available_hours + 1e-9
+    )
+    # Total hours assigned beyond individual capacity (drives capacity fit).
+    total_overflow = sum(
+        max(0.0, member_hours[w.name] - w.available_hours) for w in members
+    )
+
+    # Utilisation per member (capped display value uses raw ratio).
+    utilizations = [
+        (member_hours[w.name] / w.available_hours) if w.available_hours > 0 else 0.0
+        for w in members
+    ]
+
+    # --- individual scores -------------------------------------------------
+    coverage = scoring.skill_coverage_score(covered, total_tasks)
+    capacity_fit = scoring.capacity_fit_score(total_assigned, total_overflow)
+    balance = scoring.workload_balance_score(utilizations)
+
+    avg_quality_0_100 = (
+        sum(w.quality_score for w in members) / len(members) * 10.0
+        if members else 0.0
+    )
+    avg_speed = (
+        sum(w.speed_multiplier for w in members) / len(members)
+        if members else 1.0
+    )
+    productivity = scoring.productivity_score(
+        coverage, avg_quality_0_100, avg_speed, capacity_fit
+    )
+
+    missing_fraction = (
+        (total_tasks - covered) / total_tasks if total_tasks else 0.0
+    )
+    overload_fraction = len(overloaded_members) / len(members) if members else 0.0
+    risk = scoring.risk_score(missing_fraction, overload_fraction, balance, coverage)
+    confidence = scoring.confidence_score(
+        coverage, len(missing_skills), data_complete=True
+    )
+
+    # --- cost & duration ---------------------------------------------------
+    estimated_cost = _estimate_cost(assignments, members)
+    estimated_duration = _estimate_duration(member_hours)
+
+    return SimulationResult(
+        team=team,
+        assignments=assignments,
+        skill_coverage_score=round(coverage, 2),
+        capacity_fit_score=round(capacity_fit, 2),
+        estimated_cost=round(estimated_cost, 2),
+        estimated_duration=round(estimated_duration, 2),
+        workload_balance_score=round(balance, 2),
+        productivity_score=round(productivity, 2),
+        risk_score=round(risk, 2),
+        confidence_score=round(confidence, 2),
+        missing_skills=missing_skills,
+        overloaded_members=overloaded_members,
+        member_hours={k: round(v, 2) for k, v in member_hours.items()},
+    )
+
+
+def _estimate_cost(assignments: List[Assignment], members: List[Worker]) -> float:
+    """Sum of assigned hours * the assigned member's cost rate."""
+    rate_by_name = {w.name: w.cost_rate for w in members}
+    total = 0.0
+    for a in assignments:
+        if a.assigned_to is not None:
+            total += a.assigned_hours * rate_by_name[a.assigned_to]
+    return total
+
+
+def _estimate_duration(member_hours: Dict[str, float]) -> float:
+    """Estimated calendar duration assuming members work in parallel.
+
+    The team finishes when its busiest member finishes, so the duration is
+    the maximum per-member assigned hours (the critical path). AI speed is
+    already baked into ``assigned_hours`` via ``effective_hours_for``.
+    """
+    if not member_hours:
+        return 0.0
+    return max(member_hours.values())
