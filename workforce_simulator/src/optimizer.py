@@ -116,6 +116,40 @@ def rank_teams(
     return top
 
 
+def simulate_single_team(
+    team: Team, tasks: List[Task], config: SimConfig
+) -> SimulationResult:
+    """Simulate one explicitly chosen team (used by the API's manual mode).
+
+    Reuses the same simulation, scoring, and explanation logic as the full
+    ranking. Because only one team is evaluated, there is no population to
+    normalise cost against, so ``cost_efficiency_score`` is reported as 100
+    (the lone team is trivially the cheapest among the set of size one). Use
+    ``rank_teams`` when you need cost efficiency compared across teams.
+    """
+    require_full = config.require_full_required_skill_coverage
+    r = simulate_team(team, tasks, require_full)
+    r.cost_efficiency_score = 100.0
+    r.total_score = round(
+        scoring.total_score(
+            {
+                "skill_coverage_score": r.required_skill_coverage_score,
+                "capacity_fit_score": r.capacity_fit_score,
+                "productivity_score": r.productivity_score,
+                "workload_balance_score": r.workload_balance_score,
+                "cost_efficiency_score": r.cost_efficiency_score,
+                "risk_score": r.risk_score,
+            },
+            weights=config.weights,
+            missing_required_fraction=r.missing_required_fraction,
+        ),
+        2,
+    )
+    r.rank = 1
+    r.plain_english_explanation = explain(r)
+    return r
+
+
 # ---------------------------------------------------------------------------
 # Deterministic explanation
 # ---------------------------------------------------------------------------

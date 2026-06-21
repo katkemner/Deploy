@@ -55,12 +55,18 @@ workforce_simulator/
 │   ├── scheduler.py           # critical-path scheduling
 │   ├── scoring.py             # deterministic scoring formulas
 │   ├── optimizer.py           # team generation, ranking, explanations
-│   └── exporter.py            # writes results.json / results.csv
+│   ├── exporter.py            # writes results.json / results.csv
+│   └── api/                   # FastAPI layer (thin wrapper over the engine)
+│       ├── __init__.py        # sets up imports
+│       ├── app.py             # FastAPI app (uvicorn entry point)
+│       ├── routes.py          # endpoints, delegating to the engine
+│       └── schemas.py         # Pydantic request/response models
 ├── outputs/
 │   ├── results.json           # full results (generated)
 │   └── results.csv            # flat summary (generated)
 └── tests/
-    └── test_simulator.py      # unit tests
+    ├── test_simulator.py      # engine unit tests
+    └── test_api.py            # API tests
 ```
 
 ---
@@ -76,22 +82,79 @@ python src/main.py
 ```
 
 This prints the top 5 teams and writes `outputs/results.json` and
-`outputs/results.csv`.
+`outputs/results.csv`. **The CLI is unchanged** — adding the API did not
+alter how `python src/main.py` behaves.
+
+### Run the API server
+
+The same engine is also exposed over HTTP via FastAPI. From the
+`workforce_simulator` directory:
+
+```bash
+uvicorn src.api.app:app --reload
+```
+
+- API root: <http://127.0.0.1:8000>
+- Interactive docs (Swagger UI): <http://127.0.0.1:8000/docs>
+
+The API is a thin wrapper — every route calls the existing engine modules,
+so it always reflects the current `data/` CSVs and
+`config/scoring_weights.json`.
+
+#### Endpoints
+
+| Method & path | What it does |
+|---|---|
+| `GET /health` | Liveness check, returns `{"status": "ok"}` |
+| `GET /config` | Current scoring weights + team constraints |
+| `POST /config` | Validate and save new weights/constraints |
+| `GET /employees` | Employees loaded from `data/employees.csv` |
+| `GET /ai-agents` | AI agents loaded from `data/ai_agents.csv` |
+| `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
+| `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
+| `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
+| `POST /upload/employees` | Replace `employees.csv` from a validated CSV upload |
+| `POST /upload/ai-agents` | Replace `ai_agents.csv` from a validated CSV upload |
+| `POST /upload/tasks` | Replace `project_tasks.csv` from a validated CSV upload |
+| `GET /outputs/latest` | The latest `results.json`, or 404 if none yet |
+
+Example — simulate a specific team:
+
+```bash
+curl -X POST http://127.0.0.1:8000/simulate/manual-team \
+  -H "Content-Type: application/json" \
+  -d '{"human_names": ["Sarah","Maya","Priya","Alex","Casey"],
+       "ai_agent_names": ["AI Research Agent","AI QA Reviewer"]}'
+```
+
+**Validation & safety.** The API rejects malformed CSV uploads (missing
+columns or unparseable data), manual teams that reference unknown names,
+configs with negative weights, and impossible team constraints (e.g.
+`min > max`), each with a helpful error message. Uploads are validated
+against the engine loader and only replace the real file on success.
+
+> Note on manual-team `cost_efficiency_score`: cost efficiency is normalised
+> across *all* teams, so for a single manual team there is no population to
+> compare against and it is reported as `100`. Use `POST /simulate` when you
+> need cost efficiency compared across teams.
 
 ### Run the tests
 
 ```bash
-# with pytest
+# with pytest (engine + API)
 python -m pytest tests/
 
 # or, without pytest installed
-python tests/test_simulator.py
+python tests/test_simulator.py   # engine
+python tests/test_api.py         # API
 ```
 
-The suite covers required-skill coverage, team validity (valid vs invalid),
-dependency ordering, critical-path calculation, configurable weights, and
-that the top-5 ranking excludes invalid teams when full required coverage is
-mandatory.
+The engine suite covers required-skill coverage, team validity (valid vs
+invalid), dependency ordering, critical-path calculation, configurable
+weights, and that the top-5 ranking excludes invalid teams when full required
+coverage is mandatory. The API suite covers health, the data endpoints,
+`POST /simulate`, manual-team simulation (including the current best team),
+and the validation/error paths.
 
 ---
 

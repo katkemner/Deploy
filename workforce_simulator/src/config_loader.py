@@ -65,3 +65,23 @@ def load_config(path: str) -> SimConfig:
         min_ai_agents_per_team=int(raw.get("min_ai_agents_per_team", 0)),
         max_ai_agents_per_team=int(raw.get("max_ai_agents_per_team", 2)),
     )
+
+
+def read_raw_config(path: str) -> dict:
+    """Return the config file's contents as a plain dict (un-normalised).
+
+    Used by the API's ``GET /config`` so callers see the same scale they
+    write back (e.g. weights of 30, not 0.30). The internal ``_comment`` key,
+    if present, is stripped.
+    """
+    with open(path, "r", encoding="utf-8") as fh:
+        raw = json.load(fh)
+    raw.pop("_comment", None)
+    return raw
+
+
+def write_raw_config(path: str, data: dict) -> None:
+    """Persist a config dict to ``path`` as pretty JSON (used by the API)."""
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+
