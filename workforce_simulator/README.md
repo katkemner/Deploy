@@ -101,6 +101,22 @@ The API is a thin wrapper — every route calls the existing engine modules,
 so it always reflects the current `data/` CSVs and
 `config/scoring_weights.json`.
 
+### Run the frontend (web dashboard)
+
+A local **React + Vite** dashboard lives in [`frontend/`](frontend/) and talks
+to the API above. Start the backend first, then in a second terminal:
+
+```bash
+cd workforce_simulator/frontend
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173**. It shows API health, the data tables, CSV
+upload, the scoring config editor, a manual team builder, the full simulation
+(top 5 ranked teams), task schedules with the critical path highlighted, and a
+scenario comparison. See [`frontend/README.md`](frontend/README.md) for details.
+
 #### Endpoints
 
 | Method & path | What it does |
