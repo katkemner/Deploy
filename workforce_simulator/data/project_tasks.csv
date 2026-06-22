@@ -1,0 +1,11 @@
+task,required_skill,effort_hours,priority,dependency_ids,is_required
+User research,Research,20,1,,true
+Data analysis,Data,30,1,,true
+Product strategy,Strategy,15,1,,false
+Prototype design,UX,25,2,,true
+Frontend build,React,35,2,Prototype design,true
+Backend API,API,35,2,,true
+Database setup,Database,20,2,,true
+QA testing,QA,20,3,Frontend build|Backend API,true
+Documentation,Writing,15,3,QA testing,false
+Project coordination,Coordination,15,3,,false

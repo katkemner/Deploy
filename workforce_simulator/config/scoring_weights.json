@@ -1,0 +1,15 @@
+{
+  "weights": {
+    "skill_coverage": 30.0,
+    "capacity_fit": 20.0,
+    "productivity": 20.0,
+    "workload_balance": 15.0,
+    "cost_efficiency": 10.0,
+    "low_risk": 5.0
+  },
+  "require_full_required_skill_coverage": true,
+  "min_humans_per_team": 2,
+  "max_humans_per_team": 5,
+  "min_ai_agents_per_team": 0,
+  "max_ai_agents_per_team": 2
+}

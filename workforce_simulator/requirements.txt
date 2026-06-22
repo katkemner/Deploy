@@ -1,0 +1,9 @@
+# Workforce Simulator dependencies.
+# Kept minimal. pandas powers CSV loading/output; the rest serve the API.
+pandas>=1.3
+
+# API layer
+fastapi
+uvicorn
+pydantic
+python-multipart
