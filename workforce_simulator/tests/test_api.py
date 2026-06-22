@@ -208,6 +208,135 @@ def test_outputs_latest_after_simulate():
     assert len(r.json()) == 5
 
 
+# ---------------------------------------------------------------------------
+# Project Mode (POST /simulate/project)
+# ---------------------------------------------------------------------------
+
+def _sample_project(**overrides):
+    """Build a project scenario from the current sample tasks."""
+    tasks = client.get("/tasks").json()
+    payload = {
+        "project_name": "Sample Project",
+        "project_goal": "Ship the MVP",
+        "deadline_target_hours": 90,
+        "budget_target": 15000,
+        "optimization_objective": "balanced",
+        "tasks": tasks,
+        "current_team_human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+        "current_team_ai_agent_names": ["AI Research Agent", "AI QA Reviewer"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_project_simulation_returns_all_options():
+    r = client.post("/simulate/project", json=_sample_project())
+    assert r.status_code == 200
+    body = r.json()
+    # All five decision options are present.
+    for key in (
+        "current_team",
+        "ai_assisted_current_team",
+        "recommended_balanced_team",
+        "fastest_valid_team",
+        "lowest_cost_valid_team",
+    ):
+        assert key in body["options"], key
+        assert "total_score" in body["options"][key]
+    # Comparison table has one row per option and a recommendation summary.
+    assert len(body["comparison_table"]) == 5
+    assert body["recommendation"]["recommended_option"] in body["options"]
+    assert body["recommendation"]["summary_text"]
+    assert body["recommendation"]["critical_path"]
+
+
+def test_project_current_team_returned_exactly():
+    r = client.post("/simulate/project", json=_sample_project())
+    current = r.json()["options"]["current_team"]
+    assert current["team_members"] == ["Sarah", "Maya", "Priya", "Alex", "Casey"]
+    assert current["ai_agents"] == ["AI Research Agent", "AI QA Reviewer"]
+
+
+def test_project_ai_assisted_team_returned():
+    # Current team with no AI agents -> the assisted option should add some.
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(current_team_ai_agent_names=[]),
+    )
+    assisted = r.json()["options"]["ai_assisted_current_team"]
+    assert "ai_agents_added" in assisted
+    assert len(assisted["ai_agents_added"]) >= 1
+    assert len(assisted["ai_assist_notes"]) == len(assisted["ai_agents_added"])
+
+
+def test_project_recommended_balanced_is_valid():
+    r = client.post("/simulate/project", json=_sample_project())
+    balanced = r.json()["options"]["recommended_balanced_team"]
+    assert balanced["is_valid_team"] is True
+    assert balanced["missing_required_skills"] == []
+
+
+def test_project_fastest_is_shortest_among_options():
+    r = client.post(
+        "/simulate/project", json=_sample_project(optimization_objective="fastest")
+    )
+    body = r.json()
+    fastest = body["options"]["fastest_valid_team"]
+    balanced = body["options"]["recommended_balanced_team"]
+    # Fastest valid team is no slower than the balanced team.
+    assert fastest["estimated_duration"] <= balanced["estimated_duration"]
+    assert body["recommendation"]["recommended_option"] == "fastest_valid_team"
+
+
+def test_project_lowest_cost_is_cheapest_among_options():
+    r = client.post(
+        "/simulate/project", json=_sample_project(optimization_objective="lowest_cost")
+    )
+    body = r.json()
+    cheapest = body["options"]["lowest_cost_valid_team"]
+    balanced = body["options"]["recommended_balanced_team"]
+    assert cheapest["estimated_cost"] <= balanced["estimated_cost"]
+    assert body["recommendation"]["recommended_option"] == "lowest_cost_valid_team"
+
+
+def test_project_invalid_current_team_is_handled():
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(current_team_human_names=["Sarah", "Ghost"]),
+    )
+    assert r.status_code == 400
+    assert "Ghost" in r.json()["detail"]
+
+
+def test_project_json_dependencies_respected():
+    # Two tasks where B depends on A; B must start no earlier than A finishes.
+    tasks = [
+        {"task": "A", "required_skill": "Python", "effort_hours": 10,
+         "priority": 1, "dependencies": [], "is_required": True},
+        {"task": "B", "required_skill": "Python", "effort_hours": 10,
+         "priority": 1, "dependencies": ["A"], "is_required": True},
+    ]
+    payload = {
+        "tasks": tasks,
+        "optimization_objective": "balanced",
+        "current_team_human_names": ["John", "Casey"],
+        "current_team_ai_agent_names": [],
+    }
+    r = client.post("/simulate/project", json=payload)
+    assert r.status_code == 200
+    schedule = r.json()["options"]["current_team"]["task_schedule"]
+    by_task = {s["task"]: s for s in schedule}
+    assert by_task["B"]["start_time"] >= by_task["A"]["finish_time"]
+
+
+def test_project_rejects_empty_tasks():
+    r = client.post(
+        "/simulate/project",
+        json={"tasks": [], "current_team_human_names": ["Sarah"]},
+    )
+    assert r.status_code == 422  # schema requires at least one task
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

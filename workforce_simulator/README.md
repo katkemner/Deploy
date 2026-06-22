@@ -112,10 +112,83 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**. It shows API health, the data tables, CSV
-upload, the scoring config editor, a manual team builder, the full simulation
-(top 5 ranked teams), task schedules with the critical path highlighted, and a
-scenario comparison. See [`frontend/README.md`](frontend/README.md) for details.
+Open **http://localhost:5173**. The dashboard now leads with **Project Mode**
+(below); the raw data tables, CSV upload, scoring config, manual team builder,
+and full team-ranking simulation are tucked under a collapsible **Data and
+Settings** section. See [`frontend/README.md`](frontend/README.md) for details.
+
+### Project Mode (the primary flow)
+
+Project Mode reframes the app around a single question: *“Given this project,
+what team should I use, should I add AI agents, and what outcome should I
+expect?”* Instead of starting from raw data tables, the manager describes the
+project and their current team, then compares **staffing options**.
+
+**How to use it:**
+
+1. Fill in the project (name, goal, optional deadline-hours and budget targets,
+   max team size, max AI agents) and pick an **optimization objective**
+   (Balanced, Fastest delivery, Lowest cost, Best skill coverage, Best workload
+   balance, or Lowest risk).
+2. Edit the **Project Task Builder** — it preloads the 10 sample tasks; add,
+   edit, or delete tasks and pick dependencies from existing task names. No CSV
+   editing required.
+3. Select your **Current Team** (humans + AI agents). A live required-skill
+   coverage preview shows gaps before you simulate.
+4. Click **Run Project Simulation**.
+
+**What you get back** — five decision options, a comparison table, and a
+deterministic recommendation summary:
+
+| Option | Meaning |
+|---|---|
+| **Current Team** | Exactly the team you selected. |
+| **AI-Assisted Current Team** | Your humans + AI agents the engine greedily adds where they improve coverage, speed, cost, or risk. |
+| **Recommended Balanced Team** | The highest total-score valid team. |
+| **Fastest Valid Team** | The valid team with the shortest estimated duration. |
+| **Lowest-Cost Valid Team** | The cheapest valid team. |
+
+The **Recommendation Summary** names the recommended option, why it won, the
+main bottleneck, the critical path, the biggest risk, and a concrete *what to
+change next* (e.g. “add a React-capable person”, “extend the deadline or move
+Frontend build off Alex”, “add the recommended AI agents”). A team is
+“**valid**” when it covers every required skill.
+
+#### How `POST /simulate/project` works
+
+The endpoint accepts a **JSON project scenario** instead of reading
+`project_tasks.csv`:
+
+```json
+{
+  "project_name": "Sample Project",
+  "project_goal": "Ship the MVP",
+  "deadline_target_hours": 90,
+  "budget_target": 15000,
+  "optimization_objective": "balanced",
+  "team_constraints": { "max_humans_per_team": 5, "max_ai_agents_per_team": 2 },
+  "tasks": [ { "task": "Backend API", "required_skill": "API", "effort_hours": 35,
+               "priority": 2, "dependencies": [], "is_required": true } ],
+  "current_team_human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+  "current_team_ai_agent_names": ["AI Research Agent", "AI QA Reviewer"]
+}
+```
+
+It uses the current employees/AI agents from CSV, uses the **tasks from the
+request body** (it does **not** read or overwrite `project_tasks.csv`),
+simulates the current team and an AI-assisted version, ranks all valid teams to
+find the balanced/fastest/cheapest picks, and returns the options + comparison
+table + recommendation. It reuses the existing engine (`optimizer`,
+`simulator`, `scheduler`, `scoring`) — no scoring or scheduling logic is
+duplicated. Everything is deterministic; no LLM is used.
+
+**Known limitations (Project Mode MVP):** the recommended option follows the
+chosen objective strictly (e.g. “Balanced” picks the top total-score team even
+if your AI-assisted current team is close and cheaper — the summary points this
+out so you can choose differently); the AI-assist greedy adds agents one at a
+time by a fixed coverage→speed→cost→risk priority; task dependencies are
+respected only within the submitted task set; and cost efficiency is normalised
+across the generated team population for the run.
 
 #### Endpoints
 
@@ -129,6 +202,7 @@ scenario comparison. See [`frontend/README.md`](frontend/README.md) for details.
 | `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
+| `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |
 | `POST /upload/employees` | Replace `employees.csv` from a validated CSV upload |
 | `POST /upload/ai-agents` | Replace `ai_agents.csv` from a validated CSV upload |
 | `POST /upload/tasks` | Replace `project_tasks.csv` from a validated CSV upload |

@@ -35,8 +35,15 @@ Open the app at **http://localhost:5173**.
 
 ## What you can do
 
+- **Project Mode (primary flow):** describe a project (goal, deadline/budget
+  targets, objective), edit tasks in the Project Task Builder (preloaded with
+  the 10 sample tasks), pick your Current Team with a live coverage preview, and
+  **Run Project Simulation** to compare five staffing options (Current,
+  AI-Assisted Current, Recommended Balanced, Fastest, Lowest-Cost) with a
+  recommendation summary and comparison table.
 - See live **API health** in the header.
-- Browse **employees, AI agents, and project tasks** loaded from the backend.
+- Under **Data and Settings** (collapsible, secondary): browse employees, AI
+  agents, and project tasks loaded from the backend.
 - **Upload** replacement CSVs (validated by the backend; the relevant table
   refreshes on success, errors are shown inline).
 - Edit and save the **scoring config** (weights, required-coverage rule, team
@@ -70,7 +77,12 @@ frontend/
         ├── ManualTeamBuilder.jsx
         ├── SimulationResults.jsx
         ├── TaskScheduleTable.jsx
-        └── ScenarioComparison.jsx
+        ├── ScenarioComparison.jsx
+        ├── ProjectMode.jsx          # primary Project Mode flow
+        ├── ProjectTaskBuilder.jsx   # add/edit/delete tasks
+        ├── CurrentTeamSelector.jsx  # pick team + coverage preview
+        ├── RecommendationSummary.jsx
+        └── ProjectComparisonTable.jsx
 ```
 
 ## Build / checks
@@ -88,14 +100,26 @@ key paths.
 
 With both servers running, confirm:
 
-1. The app loads and the header shows **API: ok**.
-2. Employees, AI agents, and tasks tables populate.
-3. **Run Full Simulation** returns 5 ranked team cards.
-4. **Manual Team Builder** → "Fill current best team" (Sarah, Maya, Priya,
-   Alex, Casey + AI Research Agent, AI QA Reviewer) → **Run** shows a valid
-   team with 100% required coverage and a critical path.
-5. Selecting **Compare** on two cards shows the comparison table.
-6. Editing a weight and clicking **Save Config** shows "Config saved";
-   entering a negative weight shows a validation error.
-7. Uploading a malformed CSV shows a validation error; re-uploading a valid
-   file shows a success message and refreshes the table.
+**Project Mode (primary):**
+
+1. The app loads with **Project Mode** as the first section and the header
+   shows **API: ok**.
+2. The Project Task Builder is preloaded with the 10 sample tasks.
+3. You can add a task, edit a task, and delete a task.
+4. In **Current team**, "Fill current best team" selects Sarah, Maya, Priya,
+   Alex, Casey + AI Research Agent + AI QA Reviewer, and the coverage preview
+   updates.
+5. **Run Project Simulation** shows a **Recommendation Summary**, a **Compare
+   Staffing Options** table, and five option cards.
+6. The **Data and Settings** section exists below and expands to reveal the
+   employees/AI/tasks tables, CSV upload, scoring config, manual team builder,
+   and full simulation.
+
+**Data and Settings (secondary):**
+
+7. **Run Full Simulation** returns 5 ranked team cards; **Compare** on two
+   cards shows the comparison table.
+8. Editing a weight and clicking **Save Config** shows "Config saved"; a
+   negative weight shows a validation error.
+9. Uploading a malformed CSV shows a validation error; re-uploading a valid
+   file shows success and refreshes the table.

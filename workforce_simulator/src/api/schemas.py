@@ -190,3 +190,67 @@ class SimulationResult(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+# ---------------------------------------------------------------------------
+# Project Mode
+# ---------------------------------------------------------------------------
+
+OBJECTIVE_CHOICES = (
+    "balanced",
+    "fastest",
+    "lowest_cost",
+    "best_skill_coverage",
+    "best_workload_balance",
+    "lowest_risk",
+)
+
+
+class ProjectTaskInput(BaseModel):
+    """A task supplied in a project scenario (not loaded from CSV)."""
+
+    task: str
+    required_skill: str
+    effort_hours: float = Field(gt=0)
+    priority: int = 1
+    dependencies: List[str] = Field(default_factory=list)
+    is_required: bool = True
+
+
+class TeamConstraints(BaseModel):
+    """Optional per-request overrides for team-size limits."""
+
+    min_humans_per_team: Optional[int] = None
+    max_humans_per_team: Optional[int] = None
+    min_ai_agents_per_team: Optional[int] = None
+    max_ai_agents_per_team: Optional[int] = None
+
+
+class ProjectScenarioRequest(BaseModel):
+    """Body for ``POST /simulate/project``."""
+
+    project_name: str = ""
+    project_goal: str = ""
+    deadline_target_hours: Optional[float] = None
+    budget_target: Optional[float] = None
+    optimization_objective: str = "balanced"
+    team_constraints: Optional[TeamConstraints] = None
+    tasks: List[ProjectTaskInput]
+    current_team_human_names: List[str] = Field(default_factory=list)
+    current_team_ai_agent_names: List[str] = Field(default_factory=list)
+
+    @field_validator("optimization_objective")
+    @classmethod
+    def _check_objective(cls, value: str) -> str:
+        if value not in OBJECTIVE_CHOICES:
+            raise ValueError(
+                f"optimization_objective must be one of {list(OBJECTIVE_CHOICES)}"
+            )
+        return value
+
+    @field_validator("tasks")
+    @classmethod
+    def _check_tasks(cls, value):
+        if not value:
+            raise ValueError("Provide at least one task.")
+        return value

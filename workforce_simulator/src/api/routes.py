@@ -17,6 +17,7 @@ import config_loader
 import data_loader
 import exporter
 import optimizer
+import project_mode
 from models import Team
 
 from .schemas import (
@@ -24,6 +25,7 @@ from .schemas import (
     Employee,
     HealthResponse,
     ManualTeamRequest,
+    ProjectScenarioRequest,
     ProjectTask,
     ScoringConfig,
     SimulationResult,
@@ -227,6 +229,27 @@ def simulate_manual_team(request: ManualTeamRequest) -> dict:
     )
     result = optimizer.simulate_single_team(team, tasks, config)
     return exporter.result_to_dict(result)
+
+
+@router.post("/simulate/project", tags=["simulate"])
+def simulate_project(request: ProjectScenarioRequest) -> dict:
+    """Project Mode: compare staffing options for a project scenario.
+
+    Uses the current employees/AI agents from CSV and the tasks supplied in
+    the request body (project_tasks.csv is NOT read or overwritten). Returns
+    the five decision options, a comparison table, and a deterministic
+    recommendation summary.
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    # Current employees + AI agents come from CSV; tasks come from the request.
+    employees = data_loader.load_employees(EMPLOYEES_CSV)
+    ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
+    try:
+        return project_mode.run_project_simulation(
+            employees, ai_agents, request.model_dump(), config
+        )
+    except project_mode.ProjectModeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ---------------------------------------------------------------------------

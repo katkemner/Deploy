@@ -97,6 +97,7 @@ export const api = {
       human_names: humanNames,
       ai_agent_names: aiAgentNames,
     }),
+  runProjectSimulation: (scenario) => jsonPost('/simulate/project', scenario),
   uploadEmployees: (file) => uploadFile('/upload/employees', file),
   uploadAIAgents: (file) => uploadFile('/upload/ai-agents', file),
   uploadTasks: (file) => uploadFile('/upload/tasks', file),
