@@ -220,6 +220,10 @@ class ProjectTaskInput(BaseModel):
     dependencies: List[str] = Field(default_factory=list)
     is_required: bool = True
     routing_scores: Optional[Dict[str, int]] = None
+    # Optional three-point estimate for Monte-Carlo uncertainty. When omitted,
+    # the engine derives a band from ``effort_hours``.
+    effort_optimistic: Optional[float] = Field(default=None, gt=0)
+    effort_pessimistic: Optional[float] = Field(default=None, gt=0)
 
 
 class RouteTasksRequest(BaseModel):
@@ -233,6 +237,33 @@ class RouteTasksRequest(BaseModel):
         if not value:
             raise ValueError("Provide at least one task.")
         return value
+
+
+class UncertaintyRequest(BaseModel):
+    """Body for ``POST /simulate/uncertainty`` (Monte-Carlo analysis)."""
+
+    tasks: List[ProjectTaskInput]
+    human_names: List[str] = Field(default_factory=list)
+    ai_agent_names: List[str] = Field(default_factory=list)
+    iterations: int = Field(default=500, ge=1, le=5000)
+    seed: int = 42
+    deadline_target_hours: Optional[float] = None
+    budget_target: Optional[float] = None
+    default_low_factor: float = Field(default=0.8, gt=0)
+    default_high_factor: float = Field(default=1.5, gt=0)
+
+    @field_validator("tasks")
+    @classmethod
+    def _check_tasks(cls, value):
+        if not value:
+            raise ValueError("Provide at least one task.")
+        return value
+
+    @model_validator(mode="after")
+    def _check_team(self) -> "UncertaintyRequest":
+        if not self.human_names and not self.ai_agent_names:
+            raise ValueError("Select at least one team member.")
+        return self
 
 
 class TeamConstraints(BaseModel):

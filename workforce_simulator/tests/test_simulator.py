@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 import scoring        # noqa: E402
 import scheduler      # noqa: E402
 import routing        # noqa: E402
+import montecarlo     # noqa: E402
 from data_loader import load_all                      # noqa: E402
 from config_loader import load_config, SimConfig      # noqa: E402
 from models import Worker, Task, Team, Assignment, HUMAN, AI_AGENT  # noqa: E402
@@ -354,6 +355,85 @@ def test_reviewer_burden_zero_without_ai():
     # With AI there is a real burden.
     with_ai = routing.reviewer_burden_for_team(records, humans, has_ai=True)
     assert with_ai["review_burden_hours"] > 0.0
+
+
+# ---------------------------------------------------------------------------
+# 10. Monte-Carlo uncertainty
+# ---------------------------------------------------------------------------
+
+def _mc_request(**overrides):
+    _, _, tasks = load_all(DATA_DIR)
+    req = {
+        "tasks": [
+            {"task": t.task, "required_skill": t.required_skill,
+             "effort_hours": t.effort_hours, "priority": t.priority,
+             "dependencies": t.dependencies, "is_required": t.is_required}
+            for t in tasks
+        ],
+        "human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+        "ai_agent_names": ["AI Research Agent", "AI QA Reviewer"],
+        "iterations": 200,
+        "seed": 42,
+    }
+    req.update(overrides)
+    return req
+
+
+def test_montecarlo_percentiles_are_ordered():
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    r = montecarlo.run_uncertainty(employees, ai_agents, _mc_request(), config)
+    for key in ("duration", "cost"):
+        s = r[key]
+        assert s["min"] <= s["p10"] <= s["p50"] <= s["p90"] <= s["max"]
+
+
+def test_montecarlo_is_reproducible_with_seed():
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    r1 = montecarlo.run_uncertainty(employees, ai_agents, _mc_request(seed=7), config)
+    r2 = montecarlo.run_uncertainty(employees, ai_agents, _mc_request(seed=7), config)
+    assert r1["duration"] == r2["duration"]
+    assert r1["cost"] == r2["cost"]
+    # A different seed should change the sampled outcome.
+    r3 = montecarlo.run_uncertainty(employees, ai_agents, _mc_request(seed=99), config)
+    assert (r3["duration"]["p50"], r3["duration"]["p90"]) != (
+        r1["duration"]["p50"], r1["duration"]["p90"]
+    )
+
+
+def test_montecarlo_probabilities_in_range():
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    r = montecarlo.run_uncertainty(
+        employees, ai_agents,
+        _mc_request(deadline_target_hours=110, budget_target=20000), config
+    )
+    assert 0.0 <= r["probability_meets_deadline"] <= 1.0
+    assert 0.0 <= r["probability_within_budget"] <= 1.0
+
+
+def test_montecarlo_zero_range_is_degenerate():
+    # Optimistic == likely == pessimistic -> every iteration is identical, so
+    # the distribution collapses to the baseline (std 0).
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    req = _mc_request(default_low_factor=1.0, default_high_factor=1.0)
+    r = montecarlo.run_uncertainty(employees, ai_agents, req, config)
+    assert r["duration"]["std"] == 0.0
+    assert r["duration"]["p50"] == r["baseline"]["duration"]
+
+
+def test_montecarlo_rejects_unknown_member():
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    try:
+        montecarlo.run_uncertainty(
+            employees, ai_agents, _mc_request(human_names=["Ghost"]), config
+        )
+        assert False, "expected ProjectModeError"
+    except montecarlo.ProjectModeError:
+        pass
 
 
 # Allow running directly without pytest.

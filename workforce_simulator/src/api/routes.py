@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 import config_loader
 import data_loader
 import exporter
+import montecarlo
 import optimizer
 import project_mode
 import routing
@@ -31,6 +32,7 @@ from .schemas import (
     RouteTasksRequest,
     ScoringConfig,
     SimulationResult,
+    UncertaintyRequest,
 )
 
 router = APIRouter()
@@ -248,6 +250,26 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
     ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
     try:
         return project_mode.run_project_simulation(
+            employees, ai_agents, request.model_dump(), config
+        )
+    except project_mode.ProjectModeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/simulate/uncertainty", tags=["simulate"])
+def simulate_uncertainty(request: UncertaintyRequest) -> dict:
+    """Monte-Carlo uncertainty analysis for a team and a set of tasks.
+
+    Samples each task's effort from a triangular (optimistic/likely/
+    pessimistic) range and runs the real scheduler ``iterations`` times,
+    returning P10/P50/P90 duration and cost plus the empirical probability of
+    meeting the deadline/budget. Reproducible for a fixed ``seed``.
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    employees = data_loader.load_employees(EMPLOYEES_CSV)
+    ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
+    try:
+        return montecarlo.run_uncertainty(
             employees, ai_agents, request.model_dump(), config
         )
     except project_mode.ProjectModeError as exc:

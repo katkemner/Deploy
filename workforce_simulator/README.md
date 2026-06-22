@@ -233,6 +233,37 @@ or scheduled; suitability scores come from a fixed skill-profile table (override
 per task if needed); and review/rework hours are transparent heuristics, not
 calibrated against real data.
 
+### Monte-Carlo uncertainty analysis
+
+The plain simulation returns single-number (point) estimates. Real projects are
+uncertain, so `POST /simulate/uncertainty` (`src/montecarlo.py`) propagates that
+uncertainty by running the **real critical-path scheduler many times**. Each
+iteration samples every task's effort from a **triangular distribution** between
+its optimistic, likely, and pessimistic estimates, then schedules the team and
+records the resulting duration and cost. Over hundreds of iterations it reports:
+
+- **P10 / P50 / P90** (and min/mean/max) for **duration** and **cost**,
+- a **duration histogram**, and
+- the **empirical probability** of meeting a deadline and staying within budget.
+
+This is exactly the patent's "run a plurality of iterations… factoring in
+unforeseen challenges, resource availability, or changes in project scope."
+Nothing is invented — it is correct statistics over the ranges *you* supply.
+
+- **Inputs:** the team (human + AI names), the tasks, optional per-task
+  `effort_optimistic` / `effort_pessimistic` (otherwise a default band of
+  0.8×–1.5× of `effort_hours` is used and shown back to you), `iterations`
+  (default 500), and a `seed`.
+- **Reproducible:** a fixed `seed` makes every run identical (the engine uses a
+  seeded RNG), so results are deterministic and auditable.
+- **Honest scope:** it propagates the uncertainty you enter — it does not invent
+  accuracy. Outputs are only as good as the effort ranges provided; they are not
+  calibrated against historical outcomes.
+
+In the UI, the **Uncertainty analysis (Monte Carlo)** panel in Project Mode runs
+this for the currently-selected team and shows P10/P50/P90 duration & cost, the
+deadline/budget probabilities, and a duration histogram.
+
 #### Endpoints
 
 | Method & path | What it does |
@@ -246,6 +277,7 @@ calibrated against real data.
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
 | `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |
+| `POST /simulate/uncertainty` | **Monte Carlo** — P10/P50/P90 duration & cost + deadline/budget probabilities for a team |
 | `POST /route/tasks` | **Task routing** — human/AI routing table + summary for a set of tasks |
 | `POST /upload/employees` | Replace `employees.csv` from a validated CSV upload |
 | `POST /upload/ai-agents` | Replace `ai_agents.csv` from a validated CSV upload |

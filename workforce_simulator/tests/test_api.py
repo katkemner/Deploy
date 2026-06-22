@@ -404,6 +404,61 @@ def test_project_no_ai_option_has_no_review_burden():
     assert current["reviewer_bottleneck"]["is_bottleneck"] is False
 
 
+# ---------------------------------------------------------------------------
+# Monte-Carlo uncertainty (POST /simulate/uncertainty)
+# ---------------------------------------------------------------------------
+
+def _uncertainty_payload(**overrides):
+    tasks = client.get("/tasks").json()
+    payload = {
+        "tasks": tasks,
+        "human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+        "ai_agent_names": ["AI Research Agent", "AI QA Reviewer"],
+        "iterations": 200,
+        "seed": 42,
+        "deadline_target_hours": 110,
+        "budget_target": 20000,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_uncertainty_returns_statistics():
+    r = client.post("/simulate/uncertainty", json=_uncertainty_payload())
+    assert r.status_code == 200
+    body = r.json()
+    for key in ("duration", "cost"):
+        s = body[key]
+        assert s["min"] <= s["p10"] <= s["p50"] <= s["p90"] <= s["max"]
+        assert len(s["histogram"]) >= 1
+    assert 0.0 <= body["probability_meets_deadline"] <= 1.0
+    assert 0.0 <= body["probability_within_budget"] <= 1.0
+    assert len(body["task_ranges"]) == len(_uncertainty_payload()["tasks"])
+
+
+def test_uncertainty_is_reproducible_via_api():
+    a = client.post("/simulate/uncertainty", json=_uncertainty_payload(seed=11)).json()
+    b = client.post("/simulate/uncertainty", json=_uncertainty_payload(seed=11)).json()
+    assert a["duration"] == b["duration"]
+    assert a["cost"] == b["cost"]
+
+
+def test_uncertainty_rejects_unknown_member():
+    r = client.post(
+        "/simulate/uncertainty", json=_uncertainty_payload(human_names=["Ghost"])
+    )
+    assert r.status_code == 400
+    assert "Ghost" in r.json()["detail"]
+
+
+def test_uncertainty_rejects_empty_team():
+    r = client.post(
+        "/simulate/uncertainty",
+        json=_uncertainty_payload(human_names=[], ai_agent_names=[]),
+    )
+    assert r.status_code == 422
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

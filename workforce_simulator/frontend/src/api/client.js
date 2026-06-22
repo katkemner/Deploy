@@ -99,6 +99,7 @@ export const api = {
     }),
   runProjectSimulation: (scenario) => jsonPost('/simulate/project', scenario),
   routeTasks: (tasks) => jsonPost('/route/tasks', { tasks }),
+  runUncertainty: (payload) => jsonPost('/simulate/uncertainty', payload),
   uploadEmployees: (file) => uploadFile('/upload/employees', file),
   uploadAIAgents: (file) => uploadFile('/upload/ai-agents', file),
   uploadTasks: (file) => uploadFile('/upload/tasks', file),

@@ -6,6 +6,7 @@ import RecommendationSummary from './RecommendationSummary.jsx';
 import ProjectComparisonTable from './ProjectComparisonTable.jsx';
 import TaskScheduleTable from './TaskScheduleTable.jsx';
 import RoutingTable from './RoutingTable.jsx';
+import UncertaintyPanel from './UncertaintyPanel.jsx';
 
 // Objective dropdown: label shown to user -> key sent to the API.
 const OBJECTIVES = [
@@ -326,6 +327,15 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
           />
         </div>
       )}
+
+      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+      <UncertaintyPanel
+        selectedHumans={selectedHumans}
+        selectedAis={selectedAis}
+        tasks={tasks}
+        deadlineHours={deadlineHours}
+        budget={budget}
+      />
 
       {result && (
         <div style={{ marginTop: 18 }}>

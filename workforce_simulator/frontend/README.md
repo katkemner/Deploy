@@ -48,6 +48,10 @@ Open the app at **http://localhost:5173**.
   and a reviewer-bottleneck flag; the recommendation says whether AI actually
   saves time or just shifts work to reviewers. Use **Preview task routing** to
   see the table before running a full simulation.
+- **Uncertainty analysis (Monte Carlo):** for the selected current team, runs
+  the scheduler hundreds of times over per-task effort ranges and shows
+  P10/P50/P90 duration & cost, deadline/budget probabilities, and a duration
+  histogram. Reproducible via a seed.
 - See live **API health** in the header.
 - Under **Data and Settings** (collapsible, secondary): browse employees, AI
   agents, and project tasks loaded from the backend.
@@ -90,7 +94,8 @@ frontend/
         ├── CurrentTeamSelector.jsx  # pick team + coverage preview
         ├── RecommendationSummary.jsx
         ├── ProjectComparisonTable.jsx
-        └── RoutingTable.jsx         # task-level human/AI routing table
+        ├── RoutingTable.jsx         # task-level human/AI routing table
+        └── UncertaintyPanel.jsx     # Monte-Carlo P10/P50/P90 + probabilities
 ```
 
 ## Build / checks
@@ -121,15 +126,18 @@ With both servers running, confirm:
    Staffing Options** table, five option cards, and a **Task Routing** table.
 6. **Preview task routing** shows the routing table (decision + scores +
    review/rework hours) before running a full simulation.
-7. The **Data and Settings** section exists below and expands to reveal the
+7. **Run uncertainty analysis** (Monte Carlo) shows P10/P50/P90 duration & cost,
+   deadline/budget probabilities, and a histogram; re-running with the same seed
+   gives identical numbers.
+8. The **Data and Settings** section exists below and expands to reveal the
    employees/AI/tasks tables, CSV upload, scoring config, manual team builder,
    and full simulation.
 
 **Data and Settings (secondary):**
 
-8. **Run Full Simulation** returns 5 ranked team cards; **Compare** on two
+9. **Run Full Simulation** returns 5 ranked team cards; **Compare** on two
    cards shows the comparison table.
-9. Editing a weight and clicking **Save Config** shows "Config saved"; a
-   negative weight shows a validation error.
-10. Uploading a malformed CSV shows a validation error; re-uploading a valid
+10. Editing a weight and clicking **Save Config** shows "Config saved"; a
+    negative weight shows a validation error.
+11. Uploading a malformed CSV shows a validation error; re-uploading a valid
     file shows success and refreshes the table.
