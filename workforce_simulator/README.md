@@ -190,6 +190,49 @@ time by a fixed coverage→speed→cost→risk priority; task dependencies are
 respected only within the submitted task set; and cost efficiency is normalised
 across the generated team population for the run.
 
+### Task-level human/AI routing
+
+Before scheduling, each task gets a deterministic **routing recommendation** for
+how humans and AI should split the work (`src/routing.py`). Every task is scored
+1–5 on nine dimensions — `ai_capability_fit`, `human_judgment_need`,
+`verification_ease`, `error_cost`, `context_sensitivity`, `repetition_level`,
+`speed_value`, `human_learning_value`, `collaboration_value` — derived from a
+per-skill profile table (with small adjustments for required/optional and
+priority, and optional per-task overrides via `routing_scores`). From those
+scores a rule set assigns one of:
+
+| Routing | When |
+|---|---|
+| **AI_ONLY** | high AI fit + high repetition + easy verification + low judgment + low error cost |
+| **AI_FIRST_HUMAN_REVIEW** | strong AI fit and verifiable, but human approval still adds value |
+| **HUMAN_FIRST_AI_ASSIST** | human judgment leads; AI accelerates research/drafting/analysis/QA/formatting |
+| **HUMAN_ONLY** | two or more of: high error cost, hard to verify, high context, heavy judgment |
+| **ESCALATE** | inputs missing (unprofiled skill) or scores too uncertain |
+
+Each routed task also gets an **explanation**, a **review-hours** estimate
+(human time to check AI output, scaled by error cost and verification ease), an
+**expected-rework-hours** estimate (AI errors needing fixing), and the **AI time
+saved**. At the project level these roll up so the recommendation can say
+whether **AI actually saves time or just shifts work to reviewers**
+(`net_ai_time_saved = ai_time_saved − review − rework`). Per option, a
+**reviewer-bottleneck** check flags when AI review burden exceeds ~35% of the
+team’s human capacity (a team with no AI agents carries no review burden).
+
+Routing surfaces in two places:
+
+* `POST /route/tasks` — routing table + summary for a set of tasks, no team
+  needed (used by the “Preview task routing” button).
+* `POST /simulate/project` — the response now also includes `task_routing`,
+  `routing_summary`, per-option `review_burden_hours` / `expected_rework_hours`
+  / `net_time_saved` / `reviewer_bottleneck`, and an `ai_time_verdict` in the
+  recommendation.
+
+**Routing limitations (MVP):** routing is **advisory** — it informs the
+review/rework/bottleneck analysis but does not yet change how tasks are assigned
+or scheduled; suitability scores come from a fixed skill-profile table (override
+per task if needed); and review/rework hours are transparent heuristics, not
+calibrated against real data.
+
 #### Endpoints
 
 | Method & path | What it does |
@@ -203,6 +246,7 @@ across the generated team population for the run.
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
 | `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |
+| `POST /route/tasks` | **Task routing** — human/AI routing table + summary for a set of tasks |
 | `POST /upload/employees` | Replace `employees.csv` from a validated CSV upload |
 | `POST /upload/ai-agents` | Replace `ai_agents.csv` from a validated CSV upload |
 | `POST /upload/tasks` | Replace `project_tasks.csv` from a validated CSV upload |

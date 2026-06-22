@@ -5,6 +5,7 @@ import CurrentTeamSelector from './CurrentTeamSelector.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
 import ProjectComparisonTable from './ProjectComparisonTable.jsx';
 import TaskScheduleTable from './TaskScheduleTable.jsx';
+import RoutingTable from './RoutingTable.jsx';
 
 // Objective dropdown: label shown to user -> key sent to the API.
 const OBJECTIVES = [
@@ -126,6 +127,8 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [routingPreview, setRoutingPreview] = useState(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   // Preload the current sample tasks as the default sample project.
   useEffect(() => {
@@ -175,6 +178,19 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
   function fillBestTeam() {
     setSelectedHumans(new Set(['Sarah', 'Maya', 'Priya', 'Alex', 'Casey']));
     setSelectedAis(new Set(['AI Research Agent', 'AI QA Reviewer']));
+  }
+
+  async function previewRouting() {
+    setPreviewBusy(true);
+    setError(null);
+    try {
+      const res = await api.routeTasks(tasks);
+      setRoutingPreview(res);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPreviewBusy(false);
+    }
   }
 
   const recommendedKey = result ? result.recommendation.recommended_option : null;
@@ -289,9 +305,27 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
         <button className="btn" onClick={fillBestTeam} type="button">
           Fill current best team
         </button>
+        <button
+          className="btn"
+          onClick={previewRouting}
+          type="button"
+          disabled={previewBusy || tasks.length === 0}
+        >
+          {previewBusy ? 'Routing…' : 'Preview task routing'}
+        </button>
       </div>
 
       {error && <div className="msg msg-error">{error}</div>}
+
+      {routingPreview && !result && (
+        <div style={{ marginTop: 16 }}>
+          <h3 style={{ fontSize: 16 }}>Task Routing (preview)</h3>
+          <RoutingTable
+            routing={routingPreview.task_routing}
+            summary={routingPreview.routing_summary}
+          />
+        </div>
+      )}
 
       {result && (
         <div style={{ marginTop: 18 }}>
@@ -310,6 +344,18 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
               />
             ))}
           </div>
+
+          <h3 style={{ fontSize: 16, marginTop: 18 }}>
+            Task Routing (human vs AI)
+          </h3>
+          <p className="section-hint">
+            How each task should be split between humans and AI, with the review
+            and rework hours that routing implies.
+          </p>
+          <RoutingTable
+            routing={result.task_routing}
+            summary={result.routing_summary}
+          />
         </div>
       )}
     </div>

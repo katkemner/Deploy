@@ -20,6 +20,10 @@ export default function ProjectComparisonTable({ rows }) {
             <th>Productivity</th>
             <th>Risk</th>
             <th>Confidence</th>
+            <th>Review h</th>
+            <th>Rework h</th>
+            <th>Net AI h</th>
+            <th>Reviewer bottleneck</th>
             <th>Critical path</th>
           </tr>
         </thead>
@@ -42,6 +46,16 @@ export default function ProjectComparisonTable({ rows }) {
               <td>{r.productivity}</td>
               <td>{r.risk}</td>
               <td>{r.confidence}</td>
+              <td>{r.review_burden_hours}</td>
+              <td>{r.expected_rework_hours}</td>
+              <td>{r.net_ai_time_saved}</td>
+              <td>
+                {r.reviewer_bottleneck ? (
+                  <span className="badge badge-invalid">yes</span>
+                ) : (
+                  <span className="muted">no</span>
+                )}
+              </td>
               <td style={{ whiteSpace: 'normal' }}>
                 {r.critical_path && r.critical_path.length
                   ? r.critical_path.join(' → ')

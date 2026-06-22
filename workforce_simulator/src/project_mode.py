@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Tuple
 
 import exporter
 import optimizer
+import routing
 from config_loader import SimConfig
 from models import Task, Team, Worker
 from simulator import SimulationResult, simulate_team
@@ -310,6 +311,29 @@ def _next_action(
     return "reduce optional scope or proceed as planned"
 
 
+def _ai_time_verdict(burden: dict) -> str:
+    """Deterministic note on whether AI saves time or shifts it to reviewers."""
+    saved = burden["ai_time_saved"]
+    review = burden["review_burden_hours"]
+    rework = burden["expected_rework_hours"]
+    net = burden["net_time_saved"]
+    if saved <= 0:
+        return (
+            "This option uses no AI agents, so there is no AI time saving or "
+            "review burden to weigh."
+        )
+    if net > 0:
+        return (
+            f"AI genuinely saves time here: ~{saved:.0f}h saved against "
+            f"{review:.0f}h review + {rework:.0f}h rework, a net ~{net:.0f}h gain."
+        )
+    return (
+        f"AI mostly shifts work to reviewers here: ~{saved:.0f}h saved but "
+        f"{review:.0f}h review + {rework:.0f}h rework, a net ~{net:.0f}h "
+        "(consider routing fewer tasks to AI or adding reviewer capacity)."
+    )
+
+
 def build_recommendation(
     rec_key: str,
     options: Dict[str, SimulationResult],
@@ -318,6 +342,7 @@ def build_recommendation(
     ai_notes: List[str],
     deadline_target_hours: Optional[float],
     budget_target: Optional[float],
+    burden: dict,
 ) -> dict:
     """Assemble the deterministic recommendation summary."""
     rec = options[rec_key]
@@ -368,11 +393,15 @@ def build_recommendation(
             else "misses the deadline"
         )
 
+    ai_time_verdict = _ai_time_verdict(burden)
+    reviewer_note = burden["reviewer_bottleneck"]["message"]
+
     summary_text = (
         f"Recommended: {label}. It wins on {why_phrase}, covering "
         f"{rec.required_skill_coverage_score:.0f}% of required skills "
         f"({rec.optional_skill_coverage_score:.0f}% optional), {', '.join(tradeoff_bits)}. "
         f"AI contribution: {ai_contribution}. "
+        f"{ai_time_verdict} "
         f"Main bottleneck: {bottleneck_text}. "
         f"Biggest risk: {biggest_risk}. "
         f"Next: {next_action}."
@@ -386,6 +415,8 @@ def build_recommendation(
         "critical_path": rec.critical_path,
         "biggest_risk": biggest_risk,
         "ai_contribution": ai_contribution,
+        "ai_time_verdict": ai_time_verdict,
+        "reviewer_bottleneck_note": reviewer_note,
         "what_to_change_next": next_action,
         "summary_text": summary_text,
     }
@@ -395,9 +426,17 @@ def build_recommendation(
 # Output packaging
 # ---------------------------------------------------------------------------
 
+def _burden(result: SimulationResult, records: List[dict]) -> dict:
+    """Reviewer burden + bottleneck for an option's team, from the routing."""
+    return routing.reviewer_burden_for_team(
+        records, result.team.humans, len(result.team.ai_agents) > 0
+    )
+
+
 def _option_dict(
     key: str,
     result: SimulationResult,
+    burden: dict,
     ai_added: Optional[List[Worker]] = None,
     ai_notes: Optional[List[str]] = None,
 ) -> dict:
@@ -406,13 +445,18 @@ def _option_dict(
     data = exporter.result_to_dict(result)
     data["option"] = key
     data["option_label"] = OPTION_LABELS[key]
+    data["review_burden_hours"] = burden["review_burden_hours"]
+    data["expected_rework_hours"] = burden["expected_rework_hours"]
+    data["ai_time_saved"] = burden["ai_time_saved"]
+    data["net_time_saved"] = burden["net_time_saved"]
+    data["reviewer_bottleneck"] = burden["reviewer_bottleneck"]
     if ai_added is not None:
         data["ai_agents_added"] = [w.name for w in ai_added]
         data["ai_assist_notes"] = ai_notes or []
     return data
 
 
-def _comparison_row(key: str, result: SimulationResult) -> dict:
+def _comparison_row(key: str, result: SimulationResult, burden: dict) -> dict:
     return {
         "option": OPTION_LABELS[key],
         "team_members": result.team.human_names,
@@ -426,6 +470,10 @@ def _comparison_row(key: str, result: SimulationResult) -> dict:
         "productivity": result.productivity_score,
         "risk": result.risk_score,
         "confidence": result.confidence_score,
+        "review_burden_hours": burden["review_burden_hours"],
+        "expected_rework_hours": burden["expected_rework_hours"],
+        "net_ai_time_saved": burden["net_time_saved"],
+        "reviewer_bottleneck": burden["reviewer_bottleneck"]["is_bottleneck"],
         "critical_path": result.critical_path,
     }
 
@@ -524,23 +572,40 @@ def run_project_simulation(
         "lowest_cost_valid_team": cheapest,
     }
 
+    # Task-level routing (team-independent) + per-option review/rework burden.
+    routing_records = routing.route_tasks(tasks)
+    routing_summary = routing.summarize_routing(routing_records)
+    burdens = {k: _burden(options[k], routing_records) for k in OPTION_LABELS}
+
     rec_key = choose_recommendation(options, objective)
     recommendation = build_recommendation(
         rec_key, options, objective, ai_added, ai_notes,
         request.get("deadline_target_hours"), request.get("budget_target"),
+        burdens[rec_key],
     )
 
     option_payload = {
-        "current_team": _option_dict("current_team", current_res),
-        "ai_assisted_current_team": _option_dict(
-            "ai_assisted_current_team", assisted_res, ai_added, ai_notes
+        "current_team": _option_dict(
+            "current_team", current_res, burdens["current_team"]
         ),
-        "recommended_balanced_team": _option_dict("recommended_balanced_team", balanced),
-        "fastest_valid_team": _option_dict("fastest_valid_team", fastest),
-        "lowest_cost_valid_team": _option_dict("lowest_cost_valid_team", cheapest),
+        "ai_assisted_current_team": _option_dict(
+            "ai_assisted_current_team", assisted_res,
+            burdens["ai_assisted_current_team"], ai_added, ai_notes
+        ),
+        "recommended_balanced_team": _option_dict(
+            "recommended_balanced_team", balanced, burdens["recommended_balanced_team"]
+        ),
+        "fastest_valid_team": _option_dict(
+            "fastest_valid_team", fastest, burdens["fastest_valid_team"]
+        ),
+        "lowest_cost_valid_team": _option_dict(
+            "lowest_cost_valid_team", cheapest, burdens["lowest_cost_valid_team"]
+        ),
     }
 
-    comparison_table = [_comparison_row(k, options[k]) for k in OPTION_LABELS]
+    comparison_table = [
+        _comparison_row(k, options[k], burdens[k]) for k in OPTION_LABELS
+    ]
 
     return {
         "project_name": request.get("project_name", ""),
@@ -549,4 +614,6 @@ def run_project_simulation(
         "recommendation": recommendation,
         "options": option_payload,
         "comparison_table": comparison_table,
+        "task_routing": routing_records,
+        "routing_summary": routing_summary,
     }

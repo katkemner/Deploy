@@ -18,6 +18,7 @@ import data_loader
 import exporter
 import optimizer
 import project_mode
+import routing
 from models import Team
 
 from .schemas import (
@@ -27,6 +28,7 @@ from .schemas import (
     ManualTeamRequest,
     ProjectScenarioRequest,
     ProjectTask,
+    RouteTasksRequest,
     ScoringConfig,
     SimulationResult,
 )
@@ -250,6 +252,20 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
         )
     except project_mode.ProjectModeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/route/tasks", tags=["routing"])
+def route_tasks(request: RouteTasksRequest) -> dict:
+    """Task-level human/AI routing for a set of tasks (no team required).
+
+    Returns the routing decision, 1-5 suitability scores, explanation, and
+    review/rework/AI-time estimates per task, plus project-level totals.
+    """
+    records = routing.route_tasks([t.model_dump() for t in request.tasks])
+    return {
+        "task_routing": records,
+        "routing_summary": routing.summarize_routing(records),
+    }
 
 
 # ---------------------------------------------------------------------------

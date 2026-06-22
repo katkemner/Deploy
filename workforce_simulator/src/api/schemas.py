@@ -207,7 +207,11 @@ OBJECTIVE_CHOICES = (
 
 
 class ProjectTaskInput(BaseModel):
-    """A task supplied in a project scenario (not loaded from CSV)."""
+    """A task supplied in a project scenario (not loaded from CSV).
+
+    ``routing_scores`` optionally overrides the engine's derived 1-5
+    suitability scores for the task-level human/AI routing layer.
+    """
 
     task: str
     required_skill: str
@@ -215,6 +219,20 @@ class ProjectTaskInput(BaseModel):
     priority: int = 1
     dependencies: List[str] = Field(default_factory=list)
     is_required: bool = True
+    routing_scores: Optional[Dict[str, int]] = None
+
+
+class RouteTasksRequest(BaseModel):
+    """Body for ``POST /route/tasks`` - routing only, no team needed."""
+
+    tasks: List[ProjectTaskInput]
+
+    @field_validator("tasks")
+    @classmethod
+    def _check_tasks(cls, value):
+        if not value:
+            raise ValueError("Provide at least one task.")
+        return value
 
 
 class TeamConstraints(BaseModel):

@@ -337,6 +337,73 @@ def test_project_rejects_empty_tasks():
     assert r.status_code == 422  # schema requires at least one task
 
 
+# ---------------------------------------------------------------------------
+# Task-level routing
+# ---------------------------------------------------------------------------
+
+def test_route_tasks_endpoint():
+    tasks = client.get("/tasks").json()
+    r = client.post("/route/tasks", json={"tasks": tasks})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["task_routing"]) == len(tasks)
+    decisions = {row["routing"] for row in body["task_routing"]}
+    # Every decision is one of the five valid routing labels.
+    assert decisions <= {
+        "AI_ONLY", "AI_FIRST_HUMAN_REVIEW", "HUMAN_FIRST_AI_ASSIST",
+        "HUMAN_ONLY", "ESCALATE",
+    }
+    # Each task carries the nine 1-5 suitability scores + an explanation.
+    first = body["task_routing"][0]
+    assert len(first["scores"]) == 9
+    assert first["explanation"]
+    summary = body["routing_summary"]
+    assert "net_ai_time_saved" in summary
+    assert "routing_distribution" in summary
+
+
+def test_route_tasks_rejects_empty():
+    r = client.post("/route/tasks", json={"tasks": []})
+    assert r.status_code == 422
+
+
+def test_project_includes_routing_and_review_burden():
+    payload = _sample_project()
+    r = client.post("/simulate/project", json=payload)
+    body = r.json()
+    # Routing table has one row per task; summary is present.
+    assert len(body["task_routing"]) == len(payload["tasks"])
+    assert "routing_summary" in body
+
+    # Comparison rows carry review burden, rework, and bottleneck flag.
+    row = body["comparison_table"][0]
+    for key in ("review_burden_hours", "expected_rework_hours",
+                "net_ai_time_saved", "reviewer_bottleneck"):
+        assert key in row
+
+    # Each option exposes its reviewer-bottleneck detail.
+    opt = body["options"]["ai_assisted_current_team"]
+    assert "reviewer_bottleneck" in opt
+    assert "message" in opt["reviewer_bottleneck"]
+
+    # Recommendation explains whether AI saves time or shifts it.
+    assert body["recommendation"]["ai_time_verdict"]
+
+
+def test_project_no_ai_option_has_no_review_burden():
+    # A current team with no AI agents should carry zero AI review burden.
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(
+            current_team_human_names=["Sarah", "Maya"],
+            current_team_ai_agent_names=[],
+        ),
+    )
+    current = r.json()["options"]["current_team"]
+    assert current["review_burden_hours"] == 0.0
+    assert current["reviewer_bottleneck"]["is_bottleneck"] is False
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

@@ -41,6 +41,13 @@ Open the app at **http://localhost:5173**.
   **Run Project Simulation** to compare five staffing options (Current,
   AI-Assisted Current, Recommended Balanced, Fastest, Lowest-Cost) with a
   recommendation summary and comparison table.
+- **Task routing (human vs AI):** each task gets a routing recommendation
+  (AI_ONLY / AI_FIRST_HUMAN_REVIEW / HUMAN_FIRST_AI_ASSIST / HUMAN_ONLY /
+  ESCALATE) with 1–5 suitability scores, review/rework-hour estimates, and an
+  explanation. The comparison table shows review burden, rework, net AI hours,
+  and a reviewer-bottleneck flag; the recommendation says whether AI actually
+  saves time or just shifts work to reviewers. Use **Preview task routing** to
+  see the table before running a full simulation.
 - See live **API health** in the header.
 - Under **Data and Settings** (collapsible, secondary): browse employees, AI
   agents, and project tasks loaded from the backend.
@@ -82,7 +89,8 @@ frontend/
         ├── ProjectTaskBuilder.jsx   # add/edit/delete tasks
         ├── CurrentTeamSelector.jsx  # pick team + coverage preview
         ├── RecommendationSummary.jsx
-        └── ProjectComparisonTable.jsx
+        ├── ProjectComparisonTable.jsx
+        └── RoutingTable.jsx         # task-level human/AI routing table
 ```
 
 ## Build / checks
@@ -110,16 +118,18 @@ With both servers running, confirm:
    Alex, Casey + AI Research Agent + AI QA Reviewer, and the coverage preview
    updates.
 5. **Run Project Simulation** shows a **Recommendation Summary**, a **Compare
-   Staffing Options** table, and five option cards.
-6. The **Data and Settings** section exists below and expands to reveal the
+   Staffing Options** table, five option cards, and a **Task Routing** table.
+6. **Preview task routing** shows the routing table (decision + scores +
+   review/rework hours) before running a full simulation.
+7. The **Data and Settings** section exists below and expands to reveal the
    employees/AI/tasks tables, CSV upload, scoring config, manual team builder,
    and full simulation.
 
 **Data and Settings (secondary):**
 
-7. **Run Full Simulation** returns 5 ranked team cards; **Compare** on two
+8. **Run Full Simulation** returns 5 ranked team cards; **Compare** on two
    cards shows the comparison table.
-8. Editing a weight and clicking **Save Config** shows "Config saved"; a
+9. Editing a weight and clicking **Save Config** shows "Config saved"; a
    negative weight shows a validation error.
-9. Uploading a malformed CSV shows a validation error; re-uploading a valid
-   file shows success and refreshes the table.
+10. Uploading a malformed CSV shows a validation error; re-uploading a valid
+    file shows success and refreshes the table.

@@ -38,6 +38,12 @@ export default function RecommendationSummary({ recommendation }) {
         </Row>
         <Row label="Biggest risk">{r.biggest_risk}</Row>
         <Row label="AI contribution">{r.ai_contribution}</Row>
+        {r.ai_time_verdict && (
+          <Row label="Does AI save time?">{r.ai_time_verdict}</Row>
+        )}
+        {r.reviewer_bottleneck_note && (
+          <Row label="Reviewer load">{r.reviewer_bottleneck_note}</Row>
+        )}
         <Row label="What to change next">
           <strong>{r.what_to_change_next}</strong>
         </Row>
