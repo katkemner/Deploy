@@ -112,10 +112,157 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**. It shows API health, the data tables, CSV
-upload, the scoring config editor, a manual team builder, the full simulation
-(top 5 ranked teams), task schedules with the critical path highlighted, and a
-scenario comparison. See [`frontend/README.md`](frontend/README.md) for details.
+Open **http://localhost:5173**. The dashboard now leads with **Project Mode**
+(below); the raw data tables, CSV upload, scoring config, manual team builder,
+and full team-ranking simulation are tucked under a collapsible **Data and
+Settings** section. See [`frontend/README.md`](frontend/README.md) for details.
+
+### Project Mode (the primary flow)
+
+Project Mode reframes the app around a single question: *“Given this project,
+what team should I use, should I add AI agents, and what outcome should I
+expect?”* Instead of starting from raw data tables, the manager describes the
+project and their current team, then compares **staffing options**.
+
+**How to use it:**
+
+1. Fill in the project (name, goal, optional deadline-hours and budget targets,
+   max team size, max AI agents) and pick an **optimization objective**
+   (Balanced, Fastest delivery, Lowest cost, Best skill coverage, Best workload
+   balance, or Lowest risk).
+2. Edit the **Project Task Builder** — it preloads the 10 sample tasks; add,
+   edit, or delete tasks and pick dependencies from existing task names. No CSV
+   editing required.
+3. Select your **Current Team** (humans + AI agents). A live required-skill
+   coverage preview shows gaps before you simulate.
+4. Click **Run Project Simulation**.
+
+**What you get back** — five decision options, a comparison table, and a
+deterministic recommendation summary:
+
+| Option | Meaning |
+|---|---|
+| **Current Team** | Exactly the team you selected. |
+| **AI-Assisted Current Team** | Your humans + AI agents the engine greedily adds where they improve coverage, speed, cost, or risk. |
+| **Recommended Balanced Team** | The highest total-score valid team. |
+| **Fastest Valid Team** | The valid team with the shortest estimated duration. |
+| **Lowest-Cost Valid Team** | The cheapest valid team. |
+
+The **Recommendation Summary** names the recommended option, why it won, the
+main bottleneck, the critical path, the biggest risk, and a concrete *what to
+change next* (e.g. “add a React-capable person”, “extend the deadline or move
+Frontend build off Alex”, “add the recommended AI agents”). A team is
+“**valid**” when it covers every required skill.
+
+#### How `POST /simulate/project` works
+
+The endpoint accepts a **JSON project scenario** instead of reading
+`project_tasks.csv`:
+
+```json
+{
+  "project_name": "Sample Project",
+  "project_goal": "Ship the MVP",
+  "deadline_target_hours": 90,
+  "budget_target": 15000,
+  "optimization_objective": "balanced",
+  "team_constraints": { "max_humans_per_team": 5, "max_ai_agents_per_team": 2 },
+  "tasks": [ { "task": "Backend API", "required_skill": "API", "effort_hours": 35,
+               "priority": 2, "dependencies": [], "is_required": true } ],
+  "current_team_human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+  "current_team_ai_agent_names": ["AI Research Agent", "AI QA Reviewer"]
+}
+```
+
+It uses the current employees/AI agents from CSV, uses the **tasks from the
+request body** (it does **not** read or overwrite `project_tasks.csv`),
+simulates the current team and an AI-assisted version, ranks all valid teams to
+find the balanced/fastest/cheapest picks, and returns the options + comparison
+table + recommendation. It reuses the existing engine (`optimizer`,
+`simulator`, `scheduler`, `scoring`) — no scoring or scheduling logic is
+duplicated. Everything is deterministic; no LLM is used.
+
+**Known limitations (Project Mode MVP):** the recommended option follows the
+chosen objective strictly (e.g. “Balanced” picks the top total-score team even
+if your AI-assisted current team is close and cheaper — the summary points this
+out so you can choose differently); the AI-assist greedy adds agents one at a
+time by a fixed coverage→speed→cost→risk priority; task dependencies are
+respected only within the submitted task set; and cost efficiency is normalised
+across the generated team population for the run.
+
+### Task-level human/AI routing
+
+Before scheduling, each task gets a deterministic **routing recommendation** for
+how humans and AI should split the work (`src/routing.py`). Every task is scored
+1–5 on nine dimensions — `ai_capability_fit`, `human_judgment_need`,
+`verification_ease`, `error_cost`, `context_sensitivity`, `repetition_level`,
+`speed_value`, `human_learning_value`, `collaboration_value` — derived from a
+per-skill profile table (with small adjustments for required/optional and
+priority, and optional per-task overrides via `routing_scores`). From those
+scores a rule set assigns one of:
+
+| Routing | When |
+|---|---|
+| **AI_ONLY** | high AI fit + high repetition + easy verification + low judgment + low error cost |
+| **AI_FIRST_HUMAN_REVIEW** | strong AI fit and verifiable, but human approval still adds value |
+| **HUMAN_FIRST_AI_ASSIST** | human judgment leads; AI accelerates research/drafting/analysis/QA/formatting |
+| **HUMAN_ONLY** | two or more of: high error cost, hard to verify, high context, heavy judgment |
+| **ESCALATE** | inputs missing (unprofiled skill) or scores too uncertain |
+
+Each routed task also gets an **explanation**, a **review-hours** estimate
+(human time to check AI output, scaled by error cost and verification ease), an
+**expected-rework-hours** estimate (AI errors needing fixing), and the **AI time
+saved**. At the project level these roll up so the recommendation can say
+whether **AI actually saves time or just shifts work to reviewers**
+(`net_ai_time_saved = ai_time_saved − review − rework`). Per option, a
+**reviewer-bottleneck** check flags when AI review burden exceeds ~35% of the
+team’s human capacity (a team with no AI agents carries no review burden).
+
+Routing surfaces in two places:
+
+* `POST /route/tasks` — routing table + summary for a set of tasks, no team
+  needed (used by the “Preview task routing” button).
+* `POST /simulate/project` — the response now also includes `task_routing`,
+  `routing_summary`, per-option `review_burden_hours` / `expected_rework_hours`
+  / `net_time_saved` / `reviewer_bottleneck`, and an `ai_time_verdict` in the
+  recommendation.
+
+**Routing limitations (MVP):** routing is **advisory** — it informs the
+review/rework/bottleneck analysis but does not yet change how tasks are assigned
+or scheduled; suitability scores come from a fixed skill-profile table (override
+per task if needed); and review/rework hours are transparent heuristics, not
+calibrated against real data.
+
+### Monte-Carlo uncertainty analysis
+
+The plain simulation returns single-number (point) estimates. Real projects are
+uncertain, so `POST /simulate/uncertainty` (`src/montecarlo.py`) propagates that
+uncertainty by running the **real critical-path scheduler many times**. Each
+iteration samples every task's effort from a **triangular distribution** between
+its optimistic, likely, and pessimistic estimates, then schedules the team and
+records the resulting duration and cost. Over hundreds of iterations it reports:
+
+- **P10 / P50 / P90** (and min/mean/max) for **duration** and **cost**,
+- a **duration histogram**, and
+- the **empirical probability** of meeting a deadline and staying within budget.
+
+This is exactly the patent's "run a plurality of iterations… factoring in
+unforeseen challenges, resource availability, or changes in project scope."
+Nothing is invented — it is correct statistics over the ranges *you* supply.
+
+- **Inputs:** the team (human + AI names), the tasks, optional per-task
+  `effort_optimistic` / `effort_pessimistic` (otherwise a default band of
+  0.8×–1.5× of `effort_hours` is used and shown back to you), `iterations`
+  (default 500), and a `seed`.
+- **Reproducible:** a fixed `seed` makes every run identical (the engine uses a
+  seeded RNG), so results are deterministic and auditable.
+- **Honest scope:** it propagates the uncertainty you enter — it does not invent
+  accuracy. Outputs are only as good as the effort ranges provided; they are not
+  calibrated against historical outcomes.
+
+In the UI, the **Uncertainty analysis (Monte Carlo)** panel in Project Mode runs
+this for the currently-selected team and shows P10/P50/P90 duration & cost, the
+deadline/budget probabilities, and a duration histogram.
 
 #### Endpoints
 
@@ -129,6 +276,9 @@ scenario comparison. See [`frontend/README.md`](frontend/README.md) for details.
 | `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
+| `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |
+| `POST /simulate/uncertainty` | **Monte Carlo** — P10/P50/P90 duration & cost + deadline/budget probabilities for a team |
+| `POST /route/tasks` | **Task routing** — human/AI routing table + summary for a set of tasks |
 | `POST /upload/employees` | Replace `employees.csv` from a validated CSV upload |
 | `POST /upload/ai-agents` | Replace `ai_agents.csv` from a validated CSV upload |
 | `POST /upload/tasks` | Replace `project_tasks.csv` from a validated CSV upload |

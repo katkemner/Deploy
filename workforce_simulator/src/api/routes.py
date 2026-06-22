@@ -16,7 +16,10 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 import config_loader
 import data_loader
 import exporter
+import montecarlo
 import optimizer
+import project_mode
+import routing
 from models import Team
 
 from .schemas import (
@@ -24,9 +27,12 @@ from .schemas import (
     Employee,
     HealthResponse,
     ManualTeamRequest,
+    ProjectScenarioRequest,
     ProjectTask,
+    RouteTasksRequest,
     ScoringConfig,
     SimulationResult,
+    UncertaintyRequest,
 )
 
 router = APIRouter()
@@ -227,6 +233,61 @@ def simulate_manual_team(request: ManualTeamRequest) -> dict:
     )
     result = optimizer.simulate_single_team(team, tasks, config)
     return exporter.result_to_dict(result)
+
+
+@router.post("/simulate/project", tags=["simulate"])
+def simulate_project(request: ProjectScenarioRequest) -> dict:
+    """Project Mode: compare staffing options for a project scenario.
+
+    Uses the current employees/AI agents from CSV and the tasks supplied in
+    the request body (project_tasks.csv is NOT read or overwritten). Returns
+    the five decision options, a comparison table, and a deterministic
+    recommendation summary.
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    # Current employees + AI agents come from CSV; tasks come from the request.
+    employees = data_loader.load_employees(EMPLOYEES_CSV)
+    ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
+    try:
+        return project_mode.run_project_simulation(
+            employees, ai_agents, request.model_dump(), config
+        )
+    except project_mode.ProjectModeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/simulate/uncertainty", tags=["simulate"])
+def simulate_uncertainty(request: UncertaintyRequest) -> dict:
+    """Monte-Carlo uncertainty analysis for a team and a set of tasks.
+
+    Samples each task's effort from a triangular (optimistic/likely/
+    pessimistic) range and runs the real scheduler ``iterations`` times,
+    returning P10/P50/P90 duration and cost plus the empirical probability of
+    meeting the deadline/budget. Reproducible for a fixed ``seed``.
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    employees = data_loader.load_employees(EMPLOYEES_CSV)
+    ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
+    try:
+        return montecarlo.run_uncertainty(
+            employees, ai_agents, request.model_dump(), config
+        )
+    except project_mode.ProjectModeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/route/tasks", tags=["routing"])
+def route_tasks(request: RouteTasksRequest) -> dict:
+    """Task-level human/AI routing for a set of tasks (no team required).
+
+    Returns the routing decision, 1-5 suitability scores, explanation, and
+    review/rework/AI-time estimates per task, plus project-level totals.
+    """
+    records = routing.route_tasks([t.model_dump() for t in request.tasks])
+    return {
+        "task_routing": records,
+        "routing_summary": routing.summarize_routing(records),
+    }
 
 
 # ---------------------------------------------------------------------------

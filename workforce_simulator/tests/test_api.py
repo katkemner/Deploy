@@ -208,6 +208,257 @@ def test_outputs_latest_after_simulate():
     assert len(r.json()) == 5
 
 
+# ---------------------------------------------------------------------------
+# Project Mode (POST /simulate/project)
+# ---------------------------------------------------------------------------
+
+def _sample_project(**overrides):
+    """Build a project scenario from the current sample tasks."""
+    tasks = client.get("/tasks").json()
+    payload = {
+        "project_name": "Sample Project",
+        "project_goal": "Ship the MVP",
+        "deadline_target_hours": 90,
+        "budget_target": 15000,
+        "optimization_objective": "balanced",
+        "tasks": tasks,
+        "current_team_human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+        "current_team_ai_agent_names": ["AI Research Agent", "AI QA Reviewer"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_project_simulation_returns_all_options():
+    r = client.post("/simulate/project", json=_sample_project())
+    assert r.status_code == 200
+    body = r.json()
+    # All five decision options are present.
+    for key in (
+        "current_team",
+        "ai_assisted_current_team",
+        "recommended_balanced_team",
+        "fastest_valid_team",
+        "lowest_cost_valid_team",
+    ):
+        assert key in body["options"], key
+        assert "total_score" in body["options"][key]
+    # Comparison table has one row per option and a recommendation summary.
+    assert len(body["comparison_table"]) == 5
+    assert body["recommendation"]["recommended_option"] in body["options"]
+    assert body["recommendation"]["summary_text"]
+    assert body["recommendation"]["critical_path"]
+
+
+def test_project_current_team_returned_exactly():
+    r = client.post("/simulate/project", json=_sample_project())
+    current = r.json()["options"]["current_team"]
+    assert current["team_members"] == ["Sarah", "Maya", "Priya", "Alex", "Casey"]
+    assert current["ai_agents"] == ["AI Research Agent", "AI QA Reviewer"]
+
+
+def test_project_ai_assisted_team_returned():
+    # Current team with no AI agents -> the assisted option should add some.
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(current_team_ai_agent_names=[]),
+    )
+    assisted = r.json()["options"]["ai_assisted_current_team"]
+    assert "ai_agents_added" in assisted
+    assert len(assisted["ai_agents_added"]) >= 1
+    assert len(assisted["ai_assist_notes"]) == len(assisted["ai_agents_added"])
+
+
+def test_project_recommended_balanced_is_valid():
+    r = client.post("/simulate/project", json=_sample_project())
+    balanced = r.json()["options"]["recommended_balanced_team"]
+    assert balanced["is_valid_team"] is True
+    assert balanced["missing_required_skills"] == []
+
+
+def test_project_fastest_is_shortest_among_options():
+    r = client.post(
+        "/simulate/project", json=_sample_project(optimization_objective="fastest")
+    )
+    body = r.json()
+    fastest = body["options"]["fastest_valid_team"]
+    balanced = body["options"]["recommended_balanced_team"]
+    # Fastest valid team is no slower than the balanced team.
+    assert fastest["estimated_duration"] <= balanced["estimated_duration"]
+    assert body["recommendation"]["recommended_option"] == "fastest_valid_team"
+
+
+def test_project_lowest_cost_is_cheapest_among_options():
+    r = client.post(
+        "/simulate/project", json=_sample_project(optimization_objective="lowest_cost")
+    )
+    body = r.json()
+    cheapest = body["options"]["lowest_cost_valid_team"]
+    balanced = body["options"]["recommended_balanced_team"]
+    assert cheapest["estimated_cost"] <= balanced["estimated_cost"]
+    assert body["recommendation"]["recommended_option"] == "lowest_cost_valid_team"
+
+
+def test_project_invalid_current_team_is_handled():
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(current_team_human_names=["Sarah", "Ghost"]),
+    )
+    assert r.status_code == 400
+    assert "Ghost" in r.json()["detail"]
+
+
+def test_project_json_dependencies_respected():
+    # Two tasks where B depends on A; B must start no earlier than A finishes.
+    tasks = [
+        {"task": "A", "required_skill": "Python", "effort_hours": 10,
+         "priority": 1, "dependencies": [], "is_required": True},
+        {"task": "B", "required_skill": "Python", "effort_hours": 10,
+         "priority": 1, "dependencies": ["A"], "is_required": True},
+    ]
+    payload = {
+        "tasks": tasks,
+        "optimization_objective": "balanced",
+        "current_team_human_names": ["John", "Casey"],
+        "current_team_ai_agent_names": [],
+    }
+    r = client.post("/simulate/project", json=payload)
+    assert r.status_code == 200
+    schedule = r.json()["options"]["current_team"]["task_schedule"]
+    by_task = {s["task"]: s for s in schedule}
+    assert by_task["B"]["start_time"] >= by_task["A"]["finish_time"]
+
+
+def test_project_rejects_empty_tasks():
+    r = client.post(
+        "/simulate/project",
+        json={"tasks": [], "current_team_human_names": ["Sarah"]},
+    )
+    assert r.status_code == 422  # schema requires at least one task
+
+
+# ---------------------------------------------------------------------------
+# Task-level routing
+# ---------------------------------------------------------------------------
+
+def test_route_tasks_endpoint():
+    tasks = client.get("/tasks").json()
+    r = client.post("/route/tasks", json={"tasks": tasks})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["task_routing"]) == len(tasks)
+    decisions = {row["routing"] for row in body["task_routing"]}
+    # Every decision is one of the five valid routing labels.
+    assert decisions <= {
+        "AI_ONLY", "AI_FIRST_HUMAN_REVIEW", "HUMAN_FIRST_AI_ASSIST",
+        "HUMAN_ONLY", "ESCALATE",
+    }
+    # Each task carries the nine 1-5 suitability scores + an explanation.
+    first = body["task_routing"][0]
+    assert len(first["scores"]) == 9
+    assert first["explanation"]
+    summary = body["routing_summary"]
+    assert "net_ai_time_saved" in summary
+    assert "routing_distribution" in summary
+
+
+def test_route_tasks_rejects_empty():
+    r = client.post("/route/tasks", json={"tasks": []})
+    assert r.status_code == 422
+
+
+def test_project_includes_routing_and_review_burden():
+    payload = _sample_project()
+    r = client.post("/simulate/project", json=payload)
+    body = r.json()
+    # Routing table has one row per task; summary is present.
+    assert len(body["task_routing"]) == len(payload["tasks"])
+    assert "routing_summary" in body
+
+    # Comparison rows carry review burden, rework, and bottleneck flag.
+    row = body["comparison_table"][0]
+    for key in ("review_burden_hours", "expected_rework_hours",
+                "net_ai_time_saved", "reviewer_bottleneck"):
+        assert key in row
+
+    # Each option exposes its reviewer-bottleneck detail.
+    opt = body["options"]["ai_assisted_current_team"]
+    assert "reviewer_bottleneck" in opt
+    assert "message" in opt["reviewer_bottleneck"]
+
+    # Recommendation explains whether AI saves time or shifts it.
+    assert body["recommendation"]["ai_time_verdict"]
+
+
+def test_project_no_ai_option_has_no_review_burden():
+    # A current team with no AI agents should carry zero AI review burden.
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(
+            current_team_human_names=["Sarah", "Maya"],
+            current_team_ai_agent_names=[],
+        ),
+    )
+    current = r.json()["options"]["current_team"]
+    assert current["review_burden_hours"] == 0.0
+    assert current["reviewer_bottleneck"]["is_bottleneck"] is False
+
+
+# ---------------------------------------------------------------------------
+# Monte-Carlo uncertainty (POST /simulate/uncertainty)
+# ---------------------------------------------------------------------------
+
+def _uncertainty_payload(**overrides):
+    tasks = client.get("/tasks").json()
+    payload = {
+        "tasks": tasks,
+        "human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+        "ai_agent_names": ["AI Research Agent", "AI QA Reviewer"],
+        "iterations": 200,
+        "seed": 42,
+        "deadline_target_hours": 110,
+        "budget_target": 20000,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_uncertainty_returns_statistics():
+    r = client.post("/simulate/uncertainty", json=_uncertainty_payload())
+    assert r.status_code == 200
+    body = r.json()
+    for key in ("duration", "cost"):
+        s = body[key]
+        assert s["min"] <= s["p10"] <= s["p50"] <= s["p90"] <= s["max"]
+        assert len(s["histogram"]) >= 1
+    assert 0.0 <= body["probability_meets_deadline"] <= 1.0
+    assert 0.0 <= body["probability_within_budget"] <= 1.0
+    assert len(body["task_ranges"]) == len(_uncertainty_payload()["tasks"])
+
+
+def test_uncertainty_is_reproducible_via_api():
+    a = client.post("/simulate/uncertainty", json=_uncertainty_payload(seed=11)).json()
+    b = client.post("/simulate/uncertainty", json=_uncertainty_payload(seed=11)).json()
+    assert a["duration"] == b["duration"]
+    assert a["cost"] == b["cost"]
+
+
+def test_uncertainty_rejects_unknown_member():
+    r = client.post(
+        "/simulate/uncertainty", json=_uncertainty_payload(human_names=["Ghost"])
+    )
+    assert r.status_code == 400
+    assert "Ghost" in r.json()["detail"]
+
+
+def test_uncertainty_rejects_empty_team():
+    r = client.post(
+        "/simulate/uncertainty",
+        json=_uncertainty_payload(human_names=[], ai_agent_names=[]),
+    )
+    assert r.status_code == 422
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

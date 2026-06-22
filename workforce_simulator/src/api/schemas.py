@@ -190,3 +190,116 @@ class SimulationResult(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+# ---------------------------------------------------------------------------
+# Project Mode
+# ---------------------------------------------------------------------------
+
+OBJECTIVE_CHOICES = (
+    "balanced",
+    "fastest",
+    "lowest_cost",
+    "best_skill_coverage",
+    "best_workload_balance",
+    "lowest_risk",
+)
+
+
+class ProjectTaskInput(BaseModel):
+    """A task supplied in a project scenario (not loaded from CSV).
+
+    ``routing_scores`` optionally overrides the engine's derived 1-5
+    suitability scores for the task-level human/AI routing layer.
+    """
+
+    task: str
+    required_skill: str
+    effort_hours: float = Field(gt=0)
+    priority: int = 1
+    dependencies: List[str] = Field(default_factory=list)
+    is_required: bool = True
+    routing_scores: Optional[Dict[str, int]] = None
+    # Optional three-point estimate for Monte-Carlo uncertainty. When omitted,
+    # the engine derives a band from ``effort_hours``.
+    effort_optimistic: Optional[float] = Field(default=None, gt=0)
+    effort_pessimistic: Optional[float] = Field(default=None, gt=0)
+
+
+class RouteTasksRequest(BaseModel):
+    """Body for ``POST /route/tasks`` - routing only, no team needed."""
+
+    tasks: List[ProjectTaskInput]
+
+    @field_validator("tasks")
+    @classmethod
+    def _check_tasks(cls, value):
+        if not value:
+            raise ValueError("Provide at least one task.")
+        return value
+
+
+class UncertaintyRequest(BaseModel):
+    """Body for ``POST /simulate/uncertainty`` (Monte-Carlo analysis)."""
+
+    tasks: List[ProjectTaskInput]
+    human_names: List[str] = Field(default_factory=list)
+    ai_agent_names: List[str] = Field(default_factory=list)
+    iterations: int = Field(default=500, ge=1, le=5000)
+    seed: int = 42
+    deadline_target_hours: Optional[float] = None
+    budget_target: Optional[float] = None
+    default_low_factor: float = Field(default=0.8, gt=0)
+    default_high_factor: float = Field(default=1.5, gt=0)
+
+    @field_validator("tasks")
+    @classmethod
+    def _check_tasks(cls, value):
+        if not value:
+            raise ValueError("Provide at least one task.")
+        return value
+
+    @model_validator(mode="after")
+    def _check_team(self) -> "UncertaintyRequest":
+        if not self.human_names and not self.ai_agent_names:
+            raise ValueError("Select at least one team member.")
+        return self
+
+
+class TeamConstraints(BaseModel):
+    """Optional per-request overrides for team-size limits."""
+
+    min_humans_per_team: Optional[int] = None
+    max_humans_per_team: Optional[int] = None
+    min_ai_agents_per_team: Optional[int] = None
+    max_ai_agents_per_team: Optional[int] = None
+
+
+class ProjectScenarioRequest(BaseModel):
+    """Body for ``POST /simulate/project``."""
+
+    project_name: str = ""
+    project_goal: str = ""
+    deadline_target_hours: Optional[float] = None
+    budget_target: Optional[float] = None
+    optimization_objective: str = "balanced"
+    team_constraints: Optional[TeamConstraints] = None
+    tasks: List[ProjectTaskInput]
+    current_team_human_names: List[str] = Field(default_factory=list)
+    current_team_ai_agent_names: List[str] = Field(default_factory=list)
+
+    @field_validator("optimization_objective")
+    @classmethod
+    def _check_objective(cls, value: str) -> str:
+        if value not in OBJECTIVE_CHOICES:
+            raise ValueError(
+                f"optimization_objective must be one of {list(OBJECTIVE_CHOICES)}"
+            )
+        return value
+
+    @field_validator("tasks")
+    @classmethod
+    def _check_tasks(cls, value):
+        if not value:
+            raise ValueError("Provide at least one task.")
+        return value
