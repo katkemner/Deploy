@@ -316,11 +316,23 @@ input[type='text'] {
   background: #eef2ff;
   color: #4338ca;
   border-radius: 4px;
-  padding: 1px 7px;
+  padding: 2px 8px;
   margin: 2px 4px 2px 0;
   font-size: 12px;
 }
 .tag-ai {
   background: #ecfeff;
   color: #0e7490;
+}
+
+/* Groups of chips (team names, skills, capabilities) with clear, even
+   spacing between each item. The gap handles spacing so chips inside a
+   group drop their individual margins. */
+.tag-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.tag-group .tag {
+  margin: 0;
 }

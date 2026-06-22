@@ -25,11 +25,13 @@ export default function EmployeeTable({ employees }) {
               <td>{e.name}</td>
               <td>{e.role}</td>
               <td style={{ whiteSpace: 'normal' }}>
-                {e.skills.map((s) => (
-                  <span key={s} className="tag">
-                    {s}
-                  </span>
-                ))}
+                <div className="tag-group">
+                  {e.skills.map((s) => (
+                    <span key={s} className="tag">
+                      {s}
+                    </span>
+                  ))}
+                </div>
               </td>
               <td>{e.capacity_hours}</td>
               <td>{e.workload_hours}</td>

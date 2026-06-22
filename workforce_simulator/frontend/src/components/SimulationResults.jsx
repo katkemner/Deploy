@@ -82,7 +82,7 @@ export default function SimulationResults() {
                   )}
                 </div>
 
-                <div style={{ margin: '8px 0' }}>
+                <div className="tag-group" style={{ margin: '8px 0' }}>
                   {r.team_members.map((m) => (
                     <span key={m} className="tag">
                       {m}

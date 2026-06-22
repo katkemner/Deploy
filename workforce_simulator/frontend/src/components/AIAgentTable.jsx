@@ -24,11 +24,13 @@ export default function AIAgentTable({ agents }) {
               <td>{a.name}</td>
               <td>{a.agent_type}</td>
               <td style={{ whiteSpace: 'normal' }}>
-                {a.capabilities.map((s) => (
-                  <span key={s} className="tag tag-ai">
-                    {s}
-                  </span>
-                ))}
+                <div className="tag-group">
+                  {a.capabilities.map((s) => (
+                    <span key={s} className="tag tag-ai">
+                      {s}
+                    </span>
+                  ))}
+                </div>
               </td>
               <td>{a.capacity_hours}</td>
               <td>${a.cost_rate}</td>
