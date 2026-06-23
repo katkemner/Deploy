@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-// Task-level human/AI routing table with the nine suitability scores,
-// the routing decision, review/rework estimates, and an explanation.
+// Task-level human/AI routing table with the nine suitability scores, the
+// routing decision, review/rework estimates, and an expandable "Why?" panel
+// that shows the provenance of every score and routing output.
 
 const DECISION_STYLE = {
   AI_ONLY: { background: '#ecfeff', color: '#0e7490' },
@@ -9,6 +10,12 @@ const DECISION_STYLE = {
   HUMAN_FIRST_AI_ASSIST: { background: '#eef2ff', color: '#4338ca' },
   HUMAN_ONLY: { background: '#fef3e2', color: '#b45309' },
   ESCALATE: { background: '#fdecec', color: '#dc2626' },
+};
+
+const SOURCE_STYLE = {
+  MANUAL_INPUT: { background: '#eef2ff', color: '#4338ca', label: 'manual input' },
+  EXISTING_HEURISTIC: { background: '#e8f7ee', color: 'var(--green)', label: 'heuristic' },
+  DEFAULT_FALLBACK: { background: '#fef3e2', color: 'var(--amber)', label: 'default' },
 };
 
 const SCORE_COLS = [
@@ -23,6 +30,9 @@ const SCORE_COLS = [
   ['collaboration_value', 'Collab'],
 ];
 
+// Task, Routing, 9 scores, Review, Rework, AI saved, Why = 15 columns.
+const TOTAL_COLS = 2 + SCORE_COLS.length + 4;
+
 function DecisionBadge({ decision }) {
   const style = DECISION_STYLE[decision] || {};
   return (
@@ -32,8 +42,81 @@ function DecisionBadge({ decision }) {
   );
 }
 
+function SourceBadge({ type }) {
+  const s = SOURCE_STYLE[type] || SOURCE_STYLE.DEFAULT_FALLBACK;
+  return (
+    <span className="badge" style={{ background: s.background, color: s.color }}>
+      {s.label}
+    </span>
+  );
+}
+
+function ProvenanceRows({ items }) {
+  return items.map((p) => (
+    <tr key={p.field_name}>
+      <td style={{ fontWeight: 600 }}>{p.field_name}</td>
+      <td>{String(p.value)}</td>
+      <td>
+        <SourceBadge type={p.source_type} />
+      </td>
+      <td>{p.source_name}</td>
+      <td>{Math.round(p.confidence * 100)}%</td>
+      <td style={{ whiteSpace: 'normal', minWidth: 260 }}>{p.explanation}</td>
+    </tr>
+  ));
+}
+
+function WhyPanel({ row }) {
+  return (
+    <div style={{ padding: '10px 4px' }}>
+      <p className="section-hint" style={{ marginTop: 0 }}>
+        <strong>Why?</strong> — where each number came from.{' '}
+        <SourceBadge type="MANUAL_INPUT" /> you supplied it,{' '}
+        <SourceBadge type="EXISTING_HEURISTIC" /> built-in logic,{' '}
+        <SourceBadge type="DEFAULT_FALLBACK" /> a default was used.
+      </p>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Value</th>
+            <th>Source</th>
+            <th>Source name</th>
+            <th>Confidence</th>
+            <th>Explanation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colSpan={6} style={{ background: '#f8fafc', fontWeight: 600 }}>
+              Suitability scores
+            </td>
+          </tr>
+          <ProvenanceRows items={row.score_provenance || []} />
+          <tr>
+            <td colSpan={6} style={{ background: '#f8fafc', fontWeight: 600 }}>
+              Route &amp; estimates
+            </td>
+          </tr>
+          <ProvenanceRows items={row.route_provenance || []} />
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function RoutingTable({ routing, summary }) {
+  const [expanded, setExpanded] = useState(() => new Set());
   if (!routing || routing.length === 0) return null;
+
+  function toggle(task) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(task) ? next.delete(task) : next.add(task);
+      return next;
+    });
+  }
+
   return (
     <div>
       {summary && (
@@ -71,30 +154,41 @@ export default function RoutingTable({ routing, summary }) {
               <th>Review h</th>
               <th>Rework h</th>
               <th>AI saved h</th>
-              <th>Why</th>
+              <th>Why?</th>
             </tr>
           </thead>
           <tbody>
             {routing.map((r) => (
-              <tr key={r.task}>
-                <td>{r.task}</td>
-                <td>
-                  <DecisionBadge decision={r.routing} />
-                </td>
-                {SCORE_COLS.map(([key]) => (
-                  <td key={key} style={{ textAlign: 'center' }}>
-                    {r.scores[key] === null || r.scores[key] === undefined
-                      ? '—'
-                      : r.scores[key]}
+              <React.Fragment key={r.task}>
+                <tr>
+                  <td>{r.task}</td>
+                  <td>
+                    <DecisionBadge decision={r.routing} />
                   </td>
-                ))}
-                <td>{r.review_hours}</td>
-                <td>{r.expected_rework_hours}</td>
-                <td>{r.ai_time_saved}</td>
-                <td style={{ whiteSpace: 'normal', minWidth: 240 }}>
-                  {r.explanation}
-                </td>
-              </tr>
+                  {SCORE_COLS.map(([key]) => (
+                    <td key={key} style={{ textAlign: 'center' }}>
+                      {r.scores[key] === null || r.scores[key] === undefined
+                        ? '—'
+                        : r.scores[key]}
+                    </td>
+                  ))}
+                  <td>{r.review_hours}</td>
+                  <td>{r.expected_rework_hours}</td>
+                  <td>{r.ai_time_saved}</td>
+                  <td>
+                    <button className="btn" onClick={() => toggle(r.task)}>
+                      {expanded.has(r.task) ? 'Hide' : 'Why?'}
+                    </button>
+                  </td>
+                </tr>
+                {expanded.has(r.task) && (
+                  <tr>
+                    <td colSpan={TOTAL_COLS} style={{ background: '#fbfcfe' }}>
+                      <WhyPanel row={r} />
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>

@@ -52,6 +52,10 @@ Open the app at **http://localhost:5173**.
   the scheduler hundreds of times over per-task effort ranges and shows
   P10/P50/P90 duration & cost, deadline/budget probabilities, and a duration
   histogram. Reproducible via a seed.
+- **Routing provenance (“Why?”):** each routed task has an expandable **Why?**
+  panel showing, for every score and routing output, where it came from
+  (manual input / built-in heuristic / default fallback), with a source name,
+  confidence, and explanation.
 - See live **API health** in the header.
 - Under **Data and Settings** (collapsible, secondary): browse employees, AI
   agents, and project tasks loaded from the backend.

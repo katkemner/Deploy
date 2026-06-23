@@ -24,6 +24,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Dict, List, Optional
 
+import provenance
+
 
 # ---------------------------------------------------------------------------
 # Routing decisions
@@ -112,14 +114,18 @@ def _clamp_score(v: int) -> int:
     return max(1, min(5, int(round(v))))
 
 
-def derive_scores(task) -> (Optional[Dict[str, int]], bool):
-    """Return (scores, has_profile) for a task.
+def derive_scores(task):
+    """Return ``(scores, has_profile, sources)`` for a task.
 
     Scores come from an explicit per-task override (``task.routing_scores`` or a
     dict key) when provided, otherwise from the skill profile table with small
-    deterministic adjustments for required/optional and priority. Returns
-    ``(None, False)`` when no profile or override exists - the caller routes
-    such tasks to ESCALATE.
+    deterministic adjustments for required/optional and priority. ``scores`` is
+    ``None`` (and ``has_profile`` False) when no profile or override exists - the
+    caller routes such tasks to ESCALATE.
+
+    ``sources`` maps each score field to a ``(source_type, source_name,
+    explanation)`` tuple. It is metadata only - the score *values* are computed
+    exactly as before.
     """
     overrides = _get_attr(task, "routing_scores", None)
     skill = str(_get_attr(task, "required_skill", "")).strip().lower()
@@ -128,11 +134,33 @@ def derive_scores(task) -> (Optional[Dict[str, int]], bool):
 
     if overrides:
         scores = {f: _clamp_score(overrides.get(f, 3)) for f in SCORE_FIELDS}
-        return scores, True
+        sources = {}
+        for f in SCORE_FIELDS:
+            if f in overrides:
+                sources[f] = (
+                    provenance.MANUAL_INPUT,
+                    "per-task override",
+                    "Supplied directly as a per-task routing_scores override.",
+                )
+            else:
+                sources[f] = (
+                    provenance.DEFAULT_FALLBACK,
+                    "default score (3)",
+                    "Not included in the override; used the neutral default of 3.",
+                )
+        return scores, True, sources
 
     profile = SKILL_PROFILES.get(skill)
     if profile is None:
-        return None, False
+        sources = {
+            f: (
+                provenance.DEFAULT_FALLBACK,
+                "no skill profile",
+                f"No profile for skill '{skill}' and no override; task escalates.",
+            )
+            for f in SCORE_FIELDS
+        }
+        return None, False, sources
 
     scores = dict(profile)
     # Optional work carries less error cost; top-priority work values speed more.
@@ -140,7 +168,15 @@ def derive_scores(task) -> (Optional[Dict[str, int]], bool):
         scores["error_cost"] = _clamp_score(scores["error_cost"] - 1)
     if priority == 1:
         scores["speed_value"] = _clamp_score(scores["speed_value"] + 1)
-    return scores, True
+    sources = {
+        f: (
+            provenance.EXISTING_HEURISTIC,
+            f"skill profile: {skill}",
+            f"Derived from the built-in '{skill}' skill profile.",
+        )
+        for f in SCORE_FIELDS
+    }
+    return scores, True, sources
 
 
 def _get_attr(obj, name, default):
@@ -274,24 +310,73 @@ def estimate_ai_time_saved(decision: str, effort: float) -> float:
 # ---------------------------------------------------------------------------
 
 def route_task(task) -> dict:
-    """Produce the full routing record for one task."""
-    scores, has_profile = derive_scores(task)
+    """Produce the full routing record for one task, including provenance.
+
+    Provenance is additive metadata: ``score_provenance`` explains each of the
+    nine suitability scores, and ``route_provenance`` explains the recommended
+    route and the review / rework / net-AI-time estimates. No score value or
+    decision is changed by adding it.
+    """
+    scores, has_profile, sources = derive_scores(task)
     decision, explanation = decide_route(scores, has_profile)
     effort = float(_get_attr(task, "effort_hours", 0) or 0)
     review = estimate_review_hours(decision, scores or {}, effort)
     rework = estimate_rework_hours(decision, scores or {}, effort)
     saved = estimate_ai_time_saved(decision, effort)
+    net = round(saved - review - rework, 2)
+    score_values = scores or {f: None for f in SCORE_FIELDS}
+
+    # Provenance for each of the nine suitability scores.
+    score_provenance = [
+        provenance.item(f, score_values[f], *sources[f]) for f in SCORE_FIELDS
+    ]
+
+    # Provenance for the routing decision is heuristic (a rule fired) unless we
+    # had to escalate for lack of any profile/scores, which is a default fallback.
+    if has_profile:
+        route_source_type, route_source_name = (
+            provenance.EXISTING_HEURISTIC, "routing rules"
+        )
+    else:
+        route_source_type, route_source_name = (
+            provenance.DEFAULT_FALLBACK, "fallback (no profile)"
+        )
+    route_provenance = [
+        provenance.item(
+            "recommended_route", decision, route_source_type, route_source_name,
+            explanation,
+        ),
+        provenance.item(
+            "estimated_review_hours", review, provenance.EXISTING_HEURISTIC,
+            "review-hours formula",
+            "Computed from the routing decision, error cost, and verification ease.",
+        ),
+        provenance.item(
+            "expected_rework_hours", rework, provenance.EXISTING_HEURISTIC,
+            "rework-hours formula",
+            "Computed from AI involvement, error cost, verification ease, and AI fit.",
+        ),
+        provenance.item(
+            "net_ai_time_saved", net, provenance.EXISTING_HEURISTIC,
+            "net-time formula",
+            "AI time saved minus the review and rework hours it creates.",
+        ),
+    ]
+
     return {
         "task": _get_attr(task, "task", ""),
         "required_skill": _get_attr(task, "required_skill", ""),
         "effort_hours": effort,
         "routing": decision,
-        "scores": scores or {f: None for f in SCORE_FIELDS},
+        "scores": score_values,
         "explanation": explanation,
         "review_hours": review,
         "expected_rework_hours": rework,
         "ai_time_saved": saved,
+        "net_ai_time_saved": net,
         "ai_involvement_fraction": AI_INVOLVEMENT.get(decision, 0.0),
+        "score_provenance": score_provenance,
+        "route_provenance": route_provenance,
     }
 
 
