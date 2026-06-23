@@ -87,6 +87,7 @@ class ScoringConfig(BaseModel):
     max_humans_per_team: int = 5
     min_ai_agents_per_team: int = 0
     max_ai_agents_per_team: int = 2
+    use_public_priors_for_scoring: bool = False
 
     @field_validator("weights")
     @classmethod

@@ -14,6 +14,7 @@ const DECISION_STYLE = {
 
 const SOURCE_STYLE = {
   MANUAL_INPUT: { background: '#eef2ff', color: '#4338ca', label: 'manual input' },
+  MATCHED_PUBLIC_PRIOR: { background: '#ecfeff', color: '#0e7490', label: 'public prior' },
   EXISTING_HEURISTIC: { background: '#e8f7ee', color: 'var(--green)', label: 'heuristic' },
   DEFAULT_FALLBACK: { background: '#fef3e2', color: 'var(--amber)', label: 'default' },
 };
@@ -58,10 +59,20 @@ function ProvenanceRows({ items }) {
       <td>{String(p.value)}</td>
       <td>
         <SourceBadge type={p.source_type} />
+        {p.match_confidence && (
+          <span className="muted" style={{ marginLeft: 4 }}>
+            {p.match_confidence}
+          </span>
+        )}
       </td>
       <td>{p.source_name}</td>
       <td>{Math.round(p.confidence * 100)}%</td>
-      <td style={{ whiteSpace: 'normal', minWidth: 260 }}>{p.explanation}</td>
+      <td style={{ whiteSpace: 'normal', minWidth: 260 }}>
+        {p.explanation}
+        {p.blend_ratio !== undefined && (
+          <em> (blend {Math.round(p.blend_ratio * 100)}% prior)</em>
+        )}
+      </td>
     </tr>
   ));
 }
@@ -72,9 +83,23 @@ function WhyPanel({ row }) {
       <p className="section-hint" style={{ marginTop: 0 }}>
         <strong>Why?</strong> — where each number came from.{' '}
         <SourceBadge type="MANUAL_INPUT" /> you supplied it,{' '}
+        <SourceBadge type="MATCHED_PUBLIC_PRIOR" /> a matched public prior,{' '}
         <SourceBadge type="EXISTING_HEURISTIC" /> built-in logic,{' '}
         <SourceBadge type="DEFAULT_FALLBACK" /> a default was used.
       </p>
+      {row.public_priors_enabled && (
+        <p className="section-hint" style={{ marginTop: 0 }}>
+          Public priors are <strong>ON</strong>.{' '}
+          {row.matched_prior_used
+            ? `Matched prior used: ${row.matched_prior_used} (${row.prior_match_confidence}).`
+            : `No prior used (match confidence: ${row.prior_match_confidence || 'n/a'}).`}
+        </p>
+      )}
+      {row.prior_warning && (
+        <div className="msg" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}>
+          ⚠ {row.prior_warning}
+        </div>
+      )}
       <table className="table">
         <thead>
           <tr>

@@ -487,11 +487,16 @@ def run_project_simulation(
     ai_agents: List[Worker],
     request: dict,
     config: SimConfig,
+    prior_bindings: dict = None,
 ) -> dict:
     """Run the full Project Mode comparison and return the response payload.
 
     ``request`` is the validated project scenario (see the API schema). Raises
     ``ProjectModeError`` for user-fixable input problems.
+
+    ``prior_bindings`` (optional) enables prior-backed routing scores when
+    ``config.use_public_priors_for_scoring`` is true. When the flag is off (the
+    default) the routing is computed exactly as before.
     """
     objective = request.get("optimization_objective", "balanced")
     if objective not in OBJECTIVES:
@@ -573,7 +578,10 @@ def run_project_simulation(
     }
 
     # Task-level routing (team-independent) + per-option review/rework burden.
-    routing_records = routing.route_tasks(tasks)
+    use_priors = bool(getattr(config, "use_public_priors_for_scoring", False))
+    routing_records = routing.route_tasks(
+        tasks, bindings=prior_bindings, use_priors=use_priors
+    )
     routing_summary = routing.summarize_routing(routing_records)
     burdens = {k: _burden(options[k], routing_records) for k in OPTION_LABELS}
 

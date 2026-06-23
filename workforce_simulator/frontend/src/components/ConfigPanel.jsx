@@ -107,6 +107,18 @@ export default function ConfigPanel({ config, onSaved }) {
         skill)
       </label>
 
+      <label className="checkbox-row" style={{ marginBottom: 12 }}>
+        <input
+          type="checkbox"
+          checked={!!draft.use_public_priors_for_scoring}
+          onChange={(e) =>
+            setField('use_public_priors_for_scoring', e.target.checked)
+          }
+        />
+        Use public priors for scoring (off by default — when on, matched public
+        priors may supply/blend task routing scores)
+      </label>
+
       <button className="btn btn-primary" onClick={handleSave} disabled={busy}>
         {busy ? 'Saving…' : 'Save Config'}
       </button>

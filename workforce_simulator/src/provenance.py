@@ -25,16 +25,22 @@ from __future__ import annotations
 from typing import Any, Dict
 
 MANUAL_INPUT = "MANUAL_INPUT"
+MATCHED_PUBLIC_PRIOR = "MATCHED_PUBLIC_PRIOR"
 EXISTING_HEURISTIC = "EXISTING_HEURISTIC"
 DEFAULT_FALLBACK = "DEFAULT_FALLBACK"
 
 # Every valid source type, for validation and the UI.
-VALID_SOURCE_TYPES = (MANUAL_INPUT, EXISTING_HEURISTIC, DEFAULT_FALLBACK)
+VALID_SOURCE_TYPES = (
+    MANUAL_INPUT, MATCHED_PUBLIC_PRIOR, EXISTING_HEURISTIC, DEFAULT_FALLBACK,
+)
 
 # Deterministic confidence by source type: a value you supplied is the most
-# trustworthy; a model heuristic is moderate; a bare default is weak.
+# trustworthy; a matched public prior and a model heuristic are moderate; a
+# bare default is weak. (A prior-backed item may override this with a
+# match-confidence-derived value.)
 CONFIDENCE = {
     MANUAL_INPUT: 0.95,
+    MATCHED_PUBLIC_PRIOR: 0.75,
     EXISTING_HEURISTIC: 0.7,
     DEFAULT_FALLBACK: 0.3,
 }
@@ -42,17 +48,30 @@ CONFIDENCE = {
 
 def item(
     field_name: str,
-    value: Any,
+    value,
     source_type: str,
     source_name: str,
     explanation: str,
-) -> Dict[str, Any]:
-    """Build one provenance entry with a deterministic confidence."""
-    return {
+    confidence: float = None,
+    **extra,
+) -> dict:
+    """Build one provenance entry.
+
+    ``confidence`` defaults to the deterministic value for ``source_type`` but
+    may be overridden (e.g. a prior-backed score uses its match confidence).
+    Any ``extra`` keyword fields (e.g. ``matched_prior_id``, ``match_confidence``,
+    ``blend_ratio``) are merged into the entry.
+    """
+    entry = {
         "field_name": field_name,
         "value": value,
         "source_type": source_type,
         "source_name": source_name,
-        "confidence": CONFIDENCE.get(source_type, CONFIDENCE[DEFAULT_FALLBACK]),
+        "confidence": (
+            confidence if confidence is not None
+            else CONFIDENCE.get(source_type, CONFIDENCE[DEFAULT_FALLBACK])
+        ),
         "explanation": explanation,
     }
+    entry.update(extra)
+    return entry
