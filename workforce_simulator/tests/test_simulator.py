@@ -436,6 +436,101 @@ def test_montecarlo_rejects_unknown_member():
         pass
 
 
+# ---------------------------------------------------------------------------
+# Score / routing provenance (additive metadata; changes no value or decision)
+# ---------------------------------------------------------------------------
+
+import provenance  # noqa: E402
+
+PROVENANCE_KEYS = {
+    "field_name", "value", "source_type", "source_name", "confidence", "explanation",
+}
+ROUTE_PROV_FIELDS = {
+    "recommended_route", "estimated_review_hours",
+    "expected_rework_hours", "net_ai_time_saved",
+}
+
+
+def test_routing_record_includes_provenance():
+    t = Task("Docs", "Writing", 15, 3, [], is_required=False)
+    rec = routing.route_task(t)
+    assert len(rec["score_provenance"]) == len(routing.SCORE_FIELDS)
+    assert len(rec["route_provenance"]) == 4
+    # Score provenance covers exactly the nine suitability scores.
+    assert {p["field_name"] for p in rec["score_provenance"]} == set(routing.SCORE_FIELDS)
+    # Route provenance covers the route + the three derived estimates.
+    assert {p["field_name"] for p in rec["route_provenance"]} == ROUTE_PROV_FIELDS
+
+
+def test_every_provenance_item_is_well_formed():
+    _, _, tasks = load_all(DATA_DIR)
+    for t in tasks:
+        rec = routing.route_task(t)
+        for p in rec["score_provenance"] + rec["route_provenance"]:
+            assert set(p.keys()) == PROVENANCE_KEYS
+            assert p["source_type"] in provenance.VALID_SOURCE_TYPES
+            assert 0.0 <= p["confidence"] <= 1.0
+
+
+def test_provenance_confidence_is_deterministic_by_source():
+    assert provenance.item("f", 1, provenance.MANUAL_INPUT, "n", "e")["confidence"] == 0.95
+    assert provenance.item("f", 1, provenance.EXISTING_HEURISTIC, "n", "e")["confidence"] == 0.7
+    assert provenance.item("f", 1, provenance.DEFAULT_FALLBACK, "n", "e")["confidence"] == 0.3
+
+
+def test_known_skill_scores_are_heuristic():
+    t = Task("Docs", "Writing", 15, 3, [], is_required=False)
+    rec = routing.route_task(t)
+    assert all(
+        p["source_type"] == provenance.EXISTING_HEURISTIC
+        for p in rec["score_provenance"]
+    )
+    route = next(p for p in rec["route_provenance"] if p["field_name"] == "recommended_route")
+    assert route["source_type"] == provenance.EXISTING_HEURISTIC
+
+
+def test_manual_override_provenance():
+    t = {"task": "X", "required_skill": "Writing", "effort_hours": 10,
+         "priority": 1, "is_required": True,
+         "routing_scores": {"ai_capability_fit": 5, "error_cost": 1}}
+    rec = routing.route_task(t)
+    by_field = {p["field_name"]: p for p in rec["score_provenance"]}
+    assert by_field["ai_capability_fit"]["source_type"] == provenance.MANUAL_INPUT
+    assert by_field["error_cost"]["source_type"] == provenance.MANUAL_INPUT
+    # A field not in the override falls back to the default.
+    assert by_field["verification_ease"]["source_type"] == provenance.DEFAULT_FALLBACK
+
+
+def test_unknown_skill_provenance_is_default_fallback():
+    t = Task("Mystery", "Quantum", 10, 1, [], is_required=True)
+    rec = routing.route_task(t)
+    assert rec["routing"] == routing.ESCALATE
+    assert all(
+        p["source_type"] == provenance.DEFAULT_FALLBACK for p in rec["score_provenance"]
+    )
+    route = next(p for p in rec["route_provenance"] if p["field_name"] == "recommended_route")
+    assert route["source_type"] == provenance.DEFAULT_FALLBACK
+
+
+def test_provenance_does_not_change_existing_route_decisions():
+    # The routing decisions for the sample tasks must be exactly what the engine
+    # produced before provenance was added.
+    _, _, tasks = load_all(DATA_DIR)
+    decisions = {r["task"]: r["routing"] for r in routing.route_tasks(tasks)}
+    assert decisions["Documentation"] == routing.AI_ONLY
+    assert decisions["Product strategy"] == routing.HUMAN_ONLY
+    assert decisions["User research"] == routing.AI_FIRST_HUMAN_REVIEW
+    assert decisions["Backend API"] == routing.HUMAN_FIRST_AI_ASSIST
+
+
+def test_net_ai_time_saved_field():
+    _, _, tasks = load_all(DATA_DIR)
+    rec = routing.route_task(tasks[0])
+    assert rec["net_ai_time_saved"] == round(
+        rec["ai_time_saved"] - rec["review_hours"] - rec["expected_rework_hours"], 2
+    )
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

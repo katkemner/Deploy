@@ -233,6 +233,33 @@ or scheduled; suitability scores come from a fixed skill-profile table (override
 per task if needed); and review/rework hours are transparent heuristics, not
 calibrated against real data.
 
+#### Routing provenance (explainability)
+
+Every routing record carries **provenance** — metadata explaining *where each
+value came from* — without changing any value or decision (`src/provenance.py`).
+Three source types are used:
+
+- **`MANUAL_INPUT`** — you supplied it (a per-task `routing_scores` override).
+- **`EXISTING_HEURISTIC`** — the built-in deterministic logic produced it (a
+  skill profile, a routing rule, or a formula).
+- **`DEFAULT_FALLBACK`** — a default was used because nothing else applied (an
+  unprofiled skill, or a score missing from a partial override).
+
+Each `/route/tasks` and `/simulate/project` task-routing record gains:
+
+- **`score_provenance`** — one entry per suitability score
+  (`ai_capability_fit`, `human_judgment_need`, `verification_ease`,
+  `error_cost`, `context_sensitivity`, `repetition_level`, `speed_value`,
+  `human_learning_value`, `collaboration_value`).
+- **`route_provenance`** — one entry each for `recommended_route`,
+  `estimated_review_hours`, `expected_rework_hours`, and `net_ai_time_saved`.
+
+Each entry has `field_name`, `value`, `source_type`, `source_name`,
+`confidence` (a deterministic 0–1 number set by source type: manual 0.95,
+heuristic 0.7, fallback 0.3), and a short `explanation`. In the UI, each routed
+task has an expandable **“Why?”** panel listing these entries. This layer is
+purely additive — it changes no score, formula, or routing decision.
+
 ### Monte-Carlo uncertainty analysis
 
 The plain simulation returns single-number (point) estimates. Real projects are

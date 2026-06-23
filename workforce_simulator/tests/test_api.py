@@ -459,6 +459,52 @@ def test_uncertainty_rejects_empty_team():
     assert r.status_code == 422
 
 
+# ---------------------------------------------------------------------------
+# Routing provenance (API)
+# ---------------------------------------------------------------------------
+
+_VALID_SOURCES = {"MANUAL_INPUT", "EXISTING_HEURISTIC", "DEFAULT_FALLBACK"}
+_PROV_KEYS = {
+    "field_name", "value", "source_type", "source_name", "confidence", "explanation",
+}
+
+
+def test_route_tasks_response_includes_provenance():
+    tasks = client.get("/tasks").json()
+    rows = client.post("/route/tasks", json={"tasks": tasks}).json()["task_routing"]
+    for row in rows:
+        assert "score_provenance" in row and "route_provenance" in row
+        assert len(row["score_provenance"]) == 9
+        assert len(row["route_provenance"]) == 4
+        for p in row["score_provenance"] + row["route_provenance"]:
+            assert set(p.keys()) == _PROV_KEYS
+            assert p["source_type"] in _VALID_SOURCES
+
+
+def test_route_tasks_provenance_marks_manual_override():
+    tasks = client.get("/tasks").json()
+    t = dict(tasks[0])
+    t["routing_scores"] = {"ai_capability_fit": 5}
+    row = client.post("/route/tasks", json={"tasks": [t]}).json()["task_routing"][0]
+    by_field = {p["field_name"]: p for p in row["score_provenance"]}
+    assert by_field["ai_capability_fit"]["source_type"] == "MANUAL_INPUT"
+    assert by_field["verification_ease"]["source_type"] == "DEFAULT_FALLBACK"
+
+
+def test_project_mode_routing_has_provenance_and_still_works():
+    body = client.post("/simulate/project", json=_sample_project()).json()
+    # Project Mode still returns all five options (behaviour unchanged).
+    assert len(body["options"]) == 5
+    assert body["recommendation"]["recommended_option"] in body["options"]
+    # And its task routing now carries provenance.
+    row = body["task_routing"][0]
+    assert "score_provenance" in row and "route_provenance" in row
+    assert all(
+        p["source_type"] in _VALID_SOURCES
+        for p in row["score_provenance"] + row["route_provenance"]
+    )
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0
