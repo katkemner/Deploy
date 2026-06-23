@@ -224,10 +224,28 @@ class ProjectTaskInput(BaseModel):
     # the engine derives a band from ``effort_hours``.
     effort_optimistic: Optional[float] = Field(default=None, gt=0)
     effort_pessimistic: Optional[float] = Field(default=None, gt=0)
+    # Optional descriptive fields used only by the (preview) prior matcher.
+    description: Optional[str] = None
+    expected_output: Optional[str] = None
+    task_type: Optional[str] = None
+    required_skills: Optional[List[str]] = None
 
 
 class RouteTasksRequest(BaseModel):
     """Body for ``POST /route/tasks`` - routing only, no team needed."""
+
+    tasks: List[ProjectTaskInput]
+
+    @field_validator("tasks")
+    @classmethod
+    def _check_tasks(cls, value):
+        if not value:
+            raise ValueError("Provide at least one task.")
+        return value
+
+
+class MatchTasksRequest(BaseModel):
+    """Body for ``POST /priors/match-tasks`` - prior matching preview."""
 
     tasks: List[ProjectTaskInput]
 

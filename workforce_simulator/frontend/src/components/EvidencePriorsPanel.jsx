@@ -4,9 +4,25 @@ import { api } from '../api/client.js';
 // Read-only view of the loaded public evidence priors (foundation only).
 // These are representative seed values and are NOT yet connected to routing
 // or scoring — this panel just shows what is loaded.
+const CONFIDENCE_STYLE = {
+  HIGH: { background: '#e8f7ee', color: 'var(--green)' },
+  MEDIUM: { background: '#fef3e2', color: 'var(--amber)' },
+  LOW: { background: '#fdecec', color: 'var(--red)' },
+};
+
+function ConfidenceBadge({ level }) {
+  const s = CONFIDENCE_STYLE[level] || CONFIDENCE_STYLE.LOW;
+  return (
+    <span className="badge" style={{ background: s.background, color: s.color }}>
+      {level}
+    </span>
+  );
+}
+
 export default function EvidencePriorsPanel() {
   const [priors, setPriors] = useState(null);
   const [error, setError] = useState(null);
+  const [matches, setMatches] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -14,6 +30,16 @@ export default function EvidencePriorsPanel() {
         setPriors(await api.getPriors());
       } catch (err) {
         setError(err.message);
+      }
+    })();
+    // Read-only preview: match the current sample tasks to their closest prior.
+    (async () => {
+      try {
+        const tasks = await api.getTasks();
+        const res = await api.matchTasks(tasks);
+        setMatches(res.matches);
+      } catch {
+        /* preview is best-effort; ignore */
       }
     })();
   }, []);
@@ -86,6 +112,46 @@ export default function EvidencePriorsPanel() {
           </tbody>
         </table>
       </div>
+
+      <h3 style={{ fontSize: 15, marginTop: 18 }}>Matched Prior Preview</h3>
+      <div className="msg" style={{ background: '#eef2ff', color: '#4338ca', border: '1px solid var(--border)' }}>
+        <strong>Preview only. Not yet used for scoring.</strong> Each sample task
+        is matched to its closest prior by deterministic text similarity.
+      </div>
+      {!matches ? (
+        <p className="muted">Loading preview…</p>
+      ) : (
+        <div className="table-scroll">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Matched prior</th>
+                <th>Type</th>
+                <th>Confidence</th>
+                <th>Score</th>
+                <th>Explanation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matches.map((m) => (
+                <tr key={m.project_task_id}>
+                  <td>{m.project_task_id}</td>
+                  <td>{m.matched_prior_id || '—'}</td>
+                  <td>{m.matched_prior_type || '—'}</td>
+                  <td>
+                    <ConfidenceBadge level={m.match_confidence} />
+                  </td>
+                  <td>{m.match_score}</td>
+                  <td style={{ whiteSpace: 'normal', minWidth: 260 }}>
+                    {m.explanation}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
