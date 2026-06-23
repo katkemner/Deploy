@@ -91,6 +91,7 @@ export const api = {
   getEmployees: () => request('/employees'),
   getAIAgents: () => request('/ai-agents'),
   getTasks: () => request('/tasks'),
+  getPriors: () => request('/priors'),
   runSimulation: () => request('/simulate', { method: 'POST' }),
   runManualTeam: (humanNames, aiAgentNames) =>
     jsonPost('/simulate/manual-team', {

@@ -56,6 +56,10 @@ Open the app at **http://localhost:5173**.
   panel showing, for every score and routing output, where it came from
   (manual input / built-in heuristic / default fallback), with a source name,
   confidence, and explanation.
+- **Evidence Priors (read-only):** under *Data and Settings*, a panel lists the
+  loaded public evidence-prior sources (name, type, weight, confidence) and
+  counts, clearly marked *representative seed* and *not yet connected to
+  routing*.
 - See live **API health** in the header.
 - Under **Data and Settings** (collapsible, secondary): browse employees, AI
   agents, and project tasks loaded from the backend.

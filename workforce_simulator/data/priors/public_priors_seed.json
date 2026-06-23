@@ -1,0 +1,223 @@
+{
+  "representative_seed": true,
+  "description": "Representative evidence priors for grounding task routing. These are illustrative SEED values, NOT exact figures loaded from the cited public sources. They exist so future slices can wire grounding logic against a stable shape. Every value is marked representative_seed and must not be treated as calibrated data.",
+  "version": "0.1.0-seed",
+  "source_weights": [
+    {
+      "source_name": "WORKBank_STYLE",
+      "source_weight": 0.9,
+      "source_confidence": 0.7,
+      "notes": "Representative seed weight for WORKBank-style worker/task automation-desirability evidence."
+    },
+    {
+      "source_name": "NATURE_HUMAN_AI_META_ANALYSIS",
+      "source_weight": 0.85,
+      "source_confidence": 0.7,
+      "notes": "Representative seed weight for meta-analyses of human+AI collaboration outcomes."
+    },
+    {
+      "source_name": "BLS_ORS_STYLE",
+      "source_weight": 0.8,
+      "source_confidence": 0.65,
+      "notes": "Representative seed weight for BLS Occupational Requirements Survey-style task structure evidence."
+    },
+    {
+      "source_name": "SOFTWARE_WORKFLOW_PRIOR",
+      "source_weight": 0.7,
+      "source_confidence": 0.6,
+      "notes": "Representative seed weight for software-delivery workflow priors."
+    },
+    {
+      "source_name": "AI_AGENT_BENCHMARK_PRIOR",
+      "source_weight": 0.75,
+      "source_confidence": 0.6,
+      "notes": "Representative seed weight for AI-agent benchmark (task pass-rate) priors."
+    }
+  ],
+  "evidence_priors": [
+    {
+      "prior_id": "EP-001",
+      "source_name": "WORKBank_STYLE",
+      "source_type": "WORKBank_STYLE",
+      "source_weight": 0.9,
+      "source_confidence": 0.7,
+      "task_type": "documentation",
+      "skill": "Writing",
+      "occupation": "Technical Writer",
+      "metric_name": "automation_potential",
+      "metric_value": 80,
+      "notes": "representative_seed: documentation drafting is highly automatable."
+    },
+    {
+      "prior_id": "EP-002",
+      "source_name": "NATURE_HUMAN_AI_META_ANALYSIS",
+      "source_type": "NATURE_HUMAN_AI_META_ANALYSIS",
+      "source_weight": 0.85,
+      "source_confidence": 0.7,
+      "task_type": "research",
+      "skill": "Research",
+      "occupation": "Research Analyst",
+      "metric_name": "human_ai_synergy_gain",
+      "metric_value": 25,
+      "notes": "representative_seed: human+AI pairing outperforms either alone on research synthesis."
+    },
+    {
+      "prior_id": "EP-003",
+      "source_name": "BLS_ORS_STYLE",
+      "source_type": "BLS_ORS_STYLE",
+      "source_weight": 0.8,
+      "source_confidence": 0.65,
+      "task_type": "engineering",
+      "skill": "API",
+      "occupation": "Software Developer",
+      "metric_name": "task_structure_score",
+      "metric_value": 55,
+      "notes": "representative_seed: backend API work is moderately structured."
+    },
+    {
+      "prior_id": "EP-004",
+      "source_name": "SOFTWARE_WORKFLOW_PRIOR",
+      "source_type": "SOFTWARE_WORKFLOW_PRIOR",
+      "source_weight": 0.7,
+      "source_confidence": 0.6,
+      "task_type": "qa",
+      "skill": "QA",
+      "occupation": "QA Engineer",
+      "metric_name": "automation_suitability",
+      "metric_value": 70,
+      "notes": "representative_seed: test execution and regression checks suit automation, with human sign-off."
+    },
+    {
+      "prior_id": "EP-005",
+      "source_name": "AI_AGENT_BENCHMARK_PRIOR",
+      "source_type": "AI_AGENT_BENCHMARK_PRIOR",
+      "source_weight": 0.75,
+      "source_confidence": 0.6,
+      "task_type": "engineering",
+      "skill": "Python",
+      "occupation": "Software Developer",
+      "metric_name": "agent_pass_rate",
+      "metric_value": 45,
+      "notes": "representative_seed: autonomous coding agents pass a minority of real-world tasks unaided."
+    },
+    {
+      "prior_id": "EP-006",
+      "source_name": "NATURE_HUMAN_AI_META_ANALYSIS",
+      "source_type": "NATURE_HUMAN_AI_META_ANALYSIS",
+      "source_weight": 0.85,
+      "source_confidence": 0.7,
+      "task_type": "strategy",
+      "skill": "Strategy",
+      "occupation": "Product Manager",
+      "metric_name": "human_judgment_importance",
+      "metric_value": 85,
+      "notes": "representative_seed: strategy decisions depend heavily on human judgment and accountability."
+    }
+  ],
+  "task_routing_priors": [
+    {
+      "prior_id": "TRP-DOCUMENTATION",
+      "task_type": "documentation",
+      "skill": "Writing",
+      "ai_capability_fit_prior": 85,
+      "human_judgment_need_prior": 35,
+      "verification_ease_prior": 75,
+      "error_cost_prior": 35,
+      "context_sensitivity_prior": 35,
+      "repetition_prior": 70,
+      "speed_value_prior": 75,
+      "collaboration_value_prior": 55,
+      "human_agency_prior": 45,
+      "source_refs": ["EP-001"]
+    },
+    {
+      "prior_id": "TRP-RESEARCH",
+      "task_type": "research",
+      "skill": "Research",
+      "ai_capability_fit_prior": 70,
+      "human_judgment_need_prior": 55,
+      "verification_ease_prior": 55,
+      "error_cost_prior": 45,
+      "context_sensitivity_prior": 55,
+      "repetition_prior": 50,
+      "speed_value_prior": 70,
+      "collaboration_value_prior": 75,
+      "human_agency_prior": 60,
+      "source_refs": ["EP-002"]
+    },
+    {
+      "prior_id": "TRP-QA",
+      "task_type": "qa",
+      "skill": "QA",
+      "ai_capability_fit_prior": 75,
+      "human_judgment_need_prior": 40,
+      "verification_ease_prior": 75,
+      "error_cost_prior": 55,
+      "context_sensitivity_prior": 35,
+      "repetition_prior": 75,
+      "speed_value_prior": 70,
+      "collaboration_value_prior": 55,
+      "human_agency_prior": 50,
+      "source_refs": ["EP-004"]
+    },
+    {
+      "prior_id": "TRP-ENGINEERING",
+      "task_type": "engineering",
+      "skill": "API",
+      "ai_capability_fit_prior": 55,
+      "human_judgment_need_prior": 60,
+      "verification_ease_prior": 55,
+      "error_cost_prior": 70,
+      "context_sensitivity_prior": 55,
+      "repetition_prior": 40,
+      "speed_value_prior": 55,
+      "collaboration_value_prior": 70,
+      "human_agency_prior": 65,
+      "source_refs": ["EP-003", "EP-005"]
+    },
+    {
+      "prior_id": "TRP-STRATEGY",
+      "task_type": "strategy",
+      "skill": "Strategy",
+      "ai_capability_fit_prior": 35,
+      "human_judgment_need_prior": 90,
+      "verification_ease_prior": 35,
+      "error_cost_prior": 80,
+      "context_sensitivity_prior": 85,
+      "repetition_prior": 20,
+      "speed_value_prior": 40,
+      "collaboration_value_prior": 60,
+      "human_agency_prior": 85,
+      "source_refs": ["EP-006"]
+    }
+  ],
+  "hybrid_guardrail_priors": [
+    {
+      "prior_id": "HGP-DOCUMENTATION",
+      "task_type": "documentation",
+      "hybrid_bonus_or_penalty": 8,
+      "human_ai_synergy_prior": 70,
+      "human_augmentation_prior": 75,
+      "reason": "representative_seed: AI drafts well; light human review captures most value cheaply.",
+      "source_refs": ["EP-001"]
+    },
+    {
+      "prior_id": "HGP-RESEARCH",
+      "task_type": "research",
+      "hybrid_bonus_or_penalty": 12,
+      "human_ai_synergy_prior": 80,
+      "human_augmentation_prior": 78,
+      "reason": "representative_seed: human+AI research synthesis shows the strongest synergy.",
+      "source_refs": ["EP-002"]
+    },
+    {
+      "prior_id": "HGP-STRATEGY",
+      "task_type": "strategy",
+      "hybrid_bonus_or_penalty": -10,
+      "human_ai_synergy_prior": 40,
+      "human_augmentation_prior": 50,
+      "reason": "representative_seed: over-delegating strategy to AI erodes accountability; keep humans in the lead.",
+      "source_refs": ["EP-006"]
+    }
+  ]
+}
