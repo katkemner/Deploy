@@ -539,6 +539,63 @@ def test_priors_do_not_change_project_mode():
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
+# ---------------------------------------------------------------------------
+# Prior matching preview (POST /priors/match-tasks) + unchanged behaviour
+# ---------------------------------------------------------------------------
+
+def test_match_tasks_returns_expected_structure():
+    tasks = client.get("/tasks").json()
+    r = client.post("/priors/match-tasks", json={"tasks": tasks})
+    assert r.status_code == 200
+    matches = r.json()["matches"]
+    assert len(matches) == len(tasks)
+    for m in matches:
+        for key in ("project_task_id", "matched_prior_id", "matched_prior_type",
+                    "match_score", "match_confidence", "match_method",
+                    "explanation", "candidates"):
+            assert key in m
+        assert m["match_confidence"] in ("HIGH", "MEDIUM", "LOW")
+        assert len(m["candidates"]) <= 3
+
+
+def test_match_tasks_exact_is_high_via_api():
+    payload = {"tasks": [{
+        "task": "QA", "required_skill": "QA", "effort_hours": 10,
+        "task_type": "qa", "description": "qa", "expected_output": "qa",
+    }]}
+    m = client.post("/priors/match-tasks", json=payload).json()["matches"][0]
+    assert m["matched_prior_id"] == "TRP-QA"
+    assert m["match_confidence"] == "HIGH"
+
+
+def test_match_tasks_rejects_empty():
+    r = client.post("/priors/match-tasks", json={"tasks": []})
+    assert r.status_code == 422
+
+
+def test_project_response_has_prior_match_preview_fields():
+    body = client.post("/simulate/project", json=_sample_project()).json()
+    row = next(r for r in body["task_routing"] if r["task"] == "Documentation")
+    assert "prior_match_preview" in row
+    assert "prior_match_confidence" in row
+    assert "prior_match_explanation" in row
+    # The preview must NOT change the routing decision.
+    assert row["routing"] == "AI_ONLY"
+
+
+def test_prior_matching_does_not_change_routing_or_project_results():
+    tasks = client.get("/tasks").json()
+    # Routing decisions unchanged.
+    rows = client.post("/route/tasks", json={"tasks": tasks}).json()["task_routing"]
+    decisions = {r["task"]: r["routing"] for r in rows}
+    assert decisions["Documentation"] == "AI_ONLY"
+    assert decisions["Product strategy"] == "HUMAN_ONLY"
+    # Project Mode options/recommendation unchanged in shape.
+    body = client.post("/simulate/project", json=_sample_project()).json()
+    assert len(body["options"]) == 5
+    assert body["recommendation"]["recommended_option"] in body["options"]
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

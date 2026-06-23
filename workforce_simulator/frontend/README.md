@@ -59,7 +59,9 @@ Open the app at **http://localhost:5173**.
 - **Evidence Priors (read-only):** under *Data and Settings*, a panel lists the
   loaded public evidence-prior sources (name, type, weight, confidence) and
   counts, clearly marked *representative seed* and *not yet connected to
-  routing*.
+  routing*. It also shows a **Matched Prior Preview** — each sample task's
+  closest prior with confidence, score, and explanation — labelled *"Preview
+  only. Not yet used for scoring."*
 - See live **API health** in the header.
 - Under **Data and Settings** (collapsible, secondary): browse employees, AI
   agents, and project tasks loaded from the backend.

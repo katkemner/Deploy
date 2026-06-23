@@ -18,6 +18,7 @@ import data_loader
 import exporter
 import montecarlo
 import optimizer
+import prior_matching
 import priors
 import project_mode
 import routing
@@ -28,6 +29,7 @@ from .schemas import (
     Employee,
     HealthResponse,
     ManualTeamRequest,
+    MatchTasksRequest,
     ProjectScenarioRequest,
     ProjectTask,
     RouteTasksRequest,
@@ -200,6 +202,22 @@ def get_priors() -> dict:
     return bundle.to_dict()
 
 
+@router.post("/priors/match-tasks", tags=["data"])
+def match_tasks(request: MatchTasksRequest) -> dict:
+    """Match each project task to its closest public prior (PREVIEW ONLY).
+
+    Returns one ``PriorMatch`` per task (with up to three candidate matches).
+    This is informational - the match is NOT used by routing, scoring, or any
+    simulation.
+    """
+    try:
+        bundle = priors.load_priors(PRIORS_PATH)
+    except priors.PriorsError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    task_dicts = [t.model_dump() for t in request.tasks]
+    return {"matches": prior_matching.match_tasks(task_dicts, bundle)}
+
+
 # ---------------------------------------------------------------------------
 # Simulation
 # ---------------------------------------------------------------------------
@@ -266,11 +284,37 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
     employees = data_loader.load_employees(EMPLOYEES_CSV)
     ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
     try:
-        return project_mode.run_project_simulation(
+        response = project_mode.run_project_simulation(
             employees, ai_agents, request.model_dump(), config
         )
     except project_mode.ProjectModeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    # Additive, informational-only prior-match preview. This does NOT affect
+    # any routing/scoring/recommendation produced above - it only annotates the
+    # task_routing records with the closest matching prior.
+    _attach_prior_match_preview(response, [t.model_dump() for t in request.tasks])
+    return response
+
+
+def _attach_prior_match_preview(response: dict, task_dicts: list) -> None:
+    """Add prior_match_preview/confidence/explanation to each task_routing row.
+
+    Best-effort and side-effect free with respect to the simulation: if priors
+    cannot be loaded the response is returned unchanged.
+    """
+    try:
+        bundle = priors.load_priors(PRIORS_PATH)
+    except priors.PriorsError:
+        return
+    matches = prior_matching.match_tasks(task_dicts, bundle)
+    by_task = {m["project_task_id"]: m for m in matches}
+    for row in response.get("task_routing", []):
+        m = by_task.get(row.get("task"))
+        if m:
+            row["prior_match_preview"] = m["matched_prior_id"]
+            row["prior_match_confidence"] = m["match_confidence"]
+            row["prior_match_explanation"] = m["explanation"]
 
 
 @router.post("/simulate/uncertainty", tags=["simulate"])

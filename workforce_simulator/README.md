@@ -50,6 +50,7 @@ workforce_simulator/
 │   ├── main.py                # CLI entry point (run this)
 │   ├── config_loader.py       # loads scoring_weights.json
 │   ├── priors.py              # public evidence priors (foundation + loader)
+│   ├── prior_matching.py      # deterministic task-to-prior matching (preview)
 │   ├── data_loader.py         # reads CSVs into model objects
 │   ├── models.py              # Worker / Task / Team / Assignment models
 │   ├── simulator.py           # task assignment + per-team metrics
@@ -319,6 +320,27 @@ not exact figures from those sources** — the file is marked
 read-only **Evidence Priors** panel under *Data and Settings* shows the sources,
 weights, and counts with a clear "not yet connected to routing" note.
 
+#### Prior matching preview (preview only)
+
+`src/prior_matching.py` deterministically matches each project task to its
+**closest** public prior, purely for explanation — **the match is not used by
+routing, scoring, review/rework, Monte Carlo, the optimizer, or Project Mode.**
+Matching normalises the task text (lowercase, strip punctuation, drop a small
+stopword set, tokenize) and blends three deterministic signals: skill equality/
+overlap, a text score (token **Jaccard** + `difflib` sequence ratio), and an
+optional task-type match. The blended score maps to confidence: **HIGH ≥ 0.70,
+MEDIUM ≥ 0.45, else LOW**.
+
+- `POST /priors/match-tasks` returns a `PriorMatch` per task (`project_task_id`,
+  `matched_prior_id`, `matched_prior_type`, `matched_task_type`,
+  `matched_skill`, `match_score`, `match_confidence`, `match_method`,
+  `explanation`) plus up to three candidate matches.
+- `POST /simulate/project` task-routing records gain **informational-only**
+  `prior_match_preview`, `prior_match_confidence`, and `prior_match_explanation`
+  fields (added in the API layer; the simulation itself is untouched).
+- The **Evidence Priors** panel shows a **Matched Prior Preview** table for the
+  sample tasks, labelled *"Preview only. Not yet used for scoring."*
+
 #### Endpoints
 
 | Method & path | What it does |
@@ -330,6 +352,7 @@ weights, and counts with a clear "not yet connected to routing" note.
 | `GET /ai-agents` | AI agents loaded from `data/ai_agents.csv` |
 | `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
 | `GET /priors` | Loaded public evidence priors (representative seed; not yet wired to routing) |
+| `POST /priors/match-tasks` | Closest-prior match per task (preview only; not used for scoring) |
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
 | `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |
