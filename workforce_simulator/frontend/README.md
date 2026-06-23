@@ -66,6 +66,10 @@ Open the app at **http://localhost:5173**.
   routing*. It also shows a **Matched Prior Preview** — each sample task's
   closest prior with confidence, score, and explanation — labelled *"Preview
   only. Not yet used for scoring."*
+- **Calibration (read/enter actuals):** a panel under *Data and Settings* to
+  enter a completed project's actual outcomes, see a prediction-vs-actual error
+  table and suggested multiplier updates, labelled *"Calibration suggestions are
+  not applied automatically."*
 - See live **API health** in the header.
 - Under **Data and Settings** (collapsible, secondary): browse employees, AI
   agents, and project tasks loaded from the backend.

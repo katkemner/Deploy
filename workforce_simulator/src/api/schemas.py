@@ -285,6 +285,34 @@ class UncertaintyRequest(BaseModel):
         return self
 
 
+# ---------------------------------------------------------------------------
+# Calibration (historical actuals vs predictions)
+# ---------------------------------------------------------------------------
+
+class HistoricalProjectActualInput(BaseModel):
+    """Body for ``POST /calibration/actuals`` and ``/calibration/compare``."""
+
+    project_id: str
+    project_name: str
+    project_type: str
+    original_simulation_id: Optional[str] = None
+    predicted_duration: float = Field(ge=0)
+    actual_duration: float = Field(ge=0)
+    predicted_cost: float = Field(ge=0)
+    actual_cost: float = Field(ge=0)
+    predicted_human_hours: float = Field(ge=0)
+    actual_human_hours: float = Field(ge=0)
+    predicted_review_hours: float = Field(ge=0)
+    actual_review_hours: float = Field(ge=0)
+    predicted_rework_hours: float = Field(ge=0)
+    actual_rework_hours: float = Field(ge=0)
+    predicted_bottleneck: str = ""
+    actual_bottleneck: str = ""
+    predicted_quality_score: Optional[float] = None
+    actual_quality_score: Optional[float] = None
+    notes: str = ""
+
+
 class TeamConstraints(BaseModel):
     """Optional per-request overrides for team-size limits."""
 

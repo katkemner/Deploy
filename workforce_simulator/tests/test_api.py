@@ -664,6 +664,78 @@ def test_enabled_priors_affect_scoring_only_when_on():
     assert not _has_prior_source(after["task_routing"])
 
 
+# ---------------------------------------------------------------------------
+# Calibration (actuals vs predictions) - informational only
+# ---------------------------------------------------------------------------
+
+def _actuals_payload(**kw):
+    base = {
+        "project_id": "API-CAL-1", "project_name": "Demo", "project_type": "software",
+        "predicted_duration": 100, "actual_duration": 125,
+        "predicted_cost": 10000, "actual_cost": 11000,
+        "predicted_human_hours": 200, "actual_human_hours": 215,
+        "predicted_review_hours": 20, "actual_review_hours": 30,
+        "predicted_rework_hours": 10, "actual_rework_hours": 16,
+        "predicted_bottleneck": "Alex", "actual_bottleneck": "Alex",
+    }
+    base.update(kw)
+    return base
+
+
+def test_calibration_actuals_returns_comparison():
+    r = client.post("/calibration/actuals", json=_actuals_payload())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["stored"] is True
+    comp = body["comparison"]
+    assert comp["duration_error_pct"] == 25.0
+    assert comp["bottleneck_correct"] is True
+    assert comp["applied"] is False
+    assert "suggested_multiplier_updates" in comp
+
+
+def test_calibration_compare_does_not_store():
+    r = client.post("/calibration/compare", json=_actuals_payload(project_id="NO-STORE"))
+    assert r.status_code == 200
+    comp = r.json()
+    assert comp["applied"] is False
+    # compare must not have stored the record
+    summary = client.get("/calibration/summary").json()
+    ids = {c["project_id"] for c in summary["comparisons"]}
+    assert "NO-STORE" not in ids
+
+
+def test_calibration_summary_sections():
+    client.post("/calibration/actuals", json=_actuals_payload())
+    r = client.get("/calibration/summary")
+    assert r.status_code == 200
+    body = r.json()
+    for key in ("project_count", "mean_absolute_error_pct", "biggest_misses",
+                "comparisons", "bottleneck_accuracy"):
+        assert key in body
+    assert body["project_count"] >= 1
+
+
+def test_calibration_rejects_negative():
+    r = client.post("/calibration/actuals", json=_actuals_payload(actual_cost=-1))
+    assert r.status_code == 422  # schema ge=0 rejects before reaching the engine
+
+
+def test_calibration_does_not_change_routing_or_project_mode():
+    # Submitting actuals must not affect routing decisions or Project Mode.
+    client.post("/calibration/actuals", json=_actuals_payload(project_id="CAL-X"))
+    tasks = client.get("/tasks").json()
+    decisions = {
+        r["task"]: r["routing"]
+        for r in client.post("/route/tasks", json={"tasks": tasks}).json()["task_routing"]
+    }
+    assert decisions["Documentation"] == "AI_ONLY"
+    assert decisions["Product strategy"] == "HUMAN_ONLY"
+    body = client.post("/simulate/project", json=_sample_project()).json()
+    assert len(body["options"]) == 5
+    assert body["recommendation"]["recommended_option"] in body["options"]
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

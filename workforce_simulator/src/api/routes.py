@@ -13,6 +13,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile, File
 
 # Engine modules (importable thanks to the path setup in ``api/__init__``).
+import calibration
 import config_loader
 import data_loader
 import exporter
@@ -28,6 +29,7 @@ from .schemas import (
     AIAgent,
     Employee,
     HealthResponse,
+    HistoricalProjectActualInput,
     ManualTeamRequest,
     MatchTasksRequest,
     ProjectScenarioRequest,
@@ -54,6 +56,7 @@ EMPLOYEES_CSV = os.path.join(DATA_DIR, "employees.csv")
 AI_AGENTS_CSV = os.path.join(DATA_DIR, "ai_agents.csv")
 TASKS_CSV = os.path.join(DATA_DIR, "project_tasks.csv")
 PRIORS_PATH = os.path.join(DATA_DIR, "priors", "public_priors_seed.json")
+CALIBRATION_STORE = os.path.join(DATA_DIR, "calibration", "actuals.json")
 
 # Required columns for upload validation.
 EMPLOYEE_COLUMNS = [
@@ -216,6 +219,43 @@ def match_tasks(request: MatchTasksRequest) -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
     task_dicts = [t.model_dump() for t in request.tasks]
     return {"matches": prior_matching.match_tasks(task_dicts, bundle)}
+
+
+# ---------------------------------------------------------------------------
+# Calibration (historical actuals vs predictions) - informational only
+# ---------------------------------------------------------------------------
+
+@router.post("/calibration/actuals", tags=["calibration"])
+def submit_actuals(request: HistoricalProjectActualInput) -> dict:
+    """Record a completed project's actual outcomes and compare to predictions.
+
+    Stores the actuals locally and returns the comparison. Suggested multiplier
+    updates are informational and are NOT applied to scoring or simulation.
+    """
+    data = request.model_dump()
+    try:
+        calibration.validate_actual(data)
+    except calibration.CalibrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    calibration.save_actual(CALIBRATION_STORE, data)
+    return {"stored": True, "comparison": calibration.compare(data).to_dict()}
+
+
+@router.post("/calibration/compare", tags=["calibration"])
+def compare_actuals(request: HistoricalProjectActualInput) -> dict:
+    """Compare actuals to predictions WITHOUT storing. Informational only."""
+    data = request.model_dump()
+    try:
+        calibration.validate_actual(data)
+    except calibration.CalibrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return calibration.compare(data).to_dict()
+
+
+@router.get("/calibration/summary", tags=["calibration"])
+def calibration_summary() -> dict:
+    """Aggregate error summary + biggest misses across all stored actuals."""
+    return calibration.summarize(CALIBRATION_STORE)
 
 
 # ---------------------------------------------------------------------------
