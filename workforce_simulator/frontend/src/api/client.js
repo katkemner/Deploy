@@ -104,6 +104,11 @@ export const api = {
   runUncertainty: (payload) => jsonPost('/simulate/uncertainty', payload),
   submitActuals: (actual) => jsonPost('/calibration/actuals', actual),
   getCalibrationSummary: () => request('/calibration/summary'),
+  getCalibrationProposals: () => request('/calibration/proposals'),
+  applyCalibration: (proposalIds, applyNotes) =>
+    jsonPost('/calibration/apply', { proposal_ids: proposalIds, apply_notes: applyNotes }),
+  rejectCalibration: (proposalIds) =>
+    jsonPost('/calibration/reject', { proposal_ids: proposalIds }),
   uploadEmployees: (file) => uploadFile('/upload/employees', file),
   uploadAIAgents: (file) => uploadFile('/upload/ai-agents', file),
   uploadTasks: (file) => uploadFile('/upload/tasks', file),

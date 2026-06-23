@@ -313,6 +313,33 @@ class HistoricalProjectActualInput(BaseModel):
     notes: str = ""
 
 
+class CalibrationApplyRequest(BaseModel):
+    """Body for ``POST /calibration/apply``."""
+
+    proposal_ids: List[str] = Field(default_factory=list)
+    apply_notes: str = ""
+
+    @field_validator("proposal_ids")
+    @classmethod
+    def _non_empty(cls, value):
+        if not value:
+            raise ValueError("Select at least one proposal_id to apply.")
+        return value
+
+
+class CalibrationRejectRequest(BaseModel):
+    """Body for ``POST /calibration/reject``."""
+
+    proposal_ids: List[str] = Field(default_factory=list)
+
+    @field_validator("proposal_ids")
+    @classmethod
+    def _non_empty(cls, value):
+        if not value:
+            raise ValueError("Select at least one proposal_id to reject.")
+        return value
+
+
 class TeamConstraints(BaseModel):
     """Optional per-request overrides for team-size limits."""
 
