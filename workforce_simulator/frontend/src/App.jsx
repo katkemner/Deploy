@@ -11,6 +11,7 @@ import AIAgentTable from './components/AIAgentTable.jsx';
 import TaskTable from './components/TaskTable.jsx';
 import ManualTeamBuilder from './components/ManualTeamBuilder.jsx';
 import SimulationResults from './components/SimulationResults.jsx';
+import EvidencePriorsPanel from './components/EvidencePriorsPanel.jsx';
 
 export default function App() {
   const [health, setHealth] = useState('loading'); // loading | ok | error
@@ -123,6 +124,7 @@ export default function App() {
 
               <ManualTeamBuilder employees={employees} aiAgents={aiAgents} />
               <SimulationResults />
+              <EvidencePriorsPanel />
             </div>
           )}
         </div>

@@ -49,6 +49,7 @@ workforce_simulator/
 ├── src/
 │   ├── main.py                # CLI entry point (run this)
 │   ├── config_loader.py       # loads scoring_weights.json
+│   ├── priors.py              # public evidence priors (foundation + loader)
 │   ├── data_loader.py         # reads CSVs into model objects
 │   ├── models.py              # Worker / Task / Team / Assignment models
 │   ├── simulator.py           # task assignment + per-team metrics
@@ -291,6 +292,33 @@ In the UI, the **Uncertainty analysis (Monte Carlo)** panel in Project Mode runs
 this for the currently-selected team and shows P10/P50/P90 duration & cost, the
 deadline/budget probabilities, and a duration histogram.
 
+### Public evidence priors (foundation only)
+
+A data foundation for *future* grounding of task routing in public evidence
+(`src/priors.py`, `data/priors/public_priors_seed.json`). This slice ships the
+structures, a validating loader, and a read-only API/UI — **the priors are not
+yet connected to routing or scoring, and they change no behaviour.**
+
+The seed file carries four sections, validated on load:
+
+- **`source_weights`** (`PriorSourceWeight`) — one per source category, with a
+  `source_weight` and `source_confidence` (both validated to 0–1).
+- **`evidence_priors`** (`EvidencePrior`) — individual evidence points
+  (`task_type`, `skill`, `occupation`, `metric_name`, `metric_value`, …).
+- **`task_routing_priors`** (`TaskRoutingPrior`) — per task-type prior scores
+  (`ai_capability_fit_prior`, `human_judgment_need_prior`, … `human_agency_prior`),
+  each validated to 0–100, with `source_refs`.
+- **`hybrid_guardrail_priors`** (`HybridGuardrailPrior`) — `hybrid_bonus_or_penalty`
+  plus `human_ai_synergy_prior` / `human_augmentation_prior` (0–100).
+
+The five seed source categories are `WORKBank_STYLE`,
+`NATURE_HUMAN_AI_META_ANALYSIS`, `BLS_ORS_STYLE`, `SOFTWARE_WORKFLOW_PRIOR`, and
+`AI_AGENT_BENCHMARK_PRIOR`. **All seed values are representative placeholders,
+not exact figures from those sources** — the file is marked
+`representative_seed: true`. `GET /priors` returns the loaded sections, and a
+read-only **Evidence Priors** panel under *Data and Settings* shows the sources,
+weights, and counts with a clear "not yet connected to routing" note.
+
 #### Endpoints
 
 | Method & path | What it does |
@@ -301,6 +329,7 @@ deadline/budget probabilities, and a duration histogram.
 | `GET /employees` | Employees loaded from `data/employees.csv` |
 | `GET /ai-agents` | AI agents loaded from `data/ai_agents.csv` |
 | `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
+| `GET /priors` | Loaded public evidence priors (representative seed; not yet wired to routing) |
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
 | `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |

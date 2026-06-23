@@ -18,6 +18,7 @@ import data_loader
 import exporter
 import montecarlo
 import optimizer
+import priors
 import project_mode
 import routing
 from models import Team
@@ -50,6 +51,7 @@ RESULTS_JSON = os.path.join(OUTPUT_DIR, "results.json")
 EMPLOYEES_CSV = os.path.join(DATA_DIR, "employees.csv")
 AI_AGENTS_CSV = os.path.join(DATA_DIR, "ai_agents.csv")
 TASKS_CSV = os.path.join(DATA_DIR, "project_tasks.csv")
+PRIORS_PATH = os.path.join(DATA_DIR, "priors", "public_priors_seed.json")
 
 # Required columns for upload validation.
 EMPLOYEE_COLUMNS = [
@@ -181,6 +183,21 @@ def get_tasks() -> List[ProjectTask]:
         )
         for t in data_loader.load_tasks(TASKS_CSV)
     ]
+
+
+@router.get("/priors", tags=["data"])
+def get_priors() -> dict:
+    """Return the loaded public evidence priors (foundation only).
+
+    These are representative seed values and are **not yet connected** to
+    routing or scoring. Returns ``source_weights``, ``evidence_priors``,
+    ``task_routing_priors``, and ``hybrid_guardrail_priors``.
+    """
+    try:
+        bundle = priors.load_priors(PRIORS_PATH)
+    except priors.PriorsError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return bundle.to_dict()
 
 
 # ---------------------------------------------------------------------------

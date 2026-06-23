@@ -505,6 +505,40 @@ def test_project_mode_routing_has_provenance_and_still_works():
     )
 
 
+# ---------------------------------------------------------------------------
+# Evidence priors (GET /priors) + unchanged behaviour
+# ---------------------------------------------------------------------------
+
+def test_get_priors_returns_expected_sections():
+    r = client.get("/priors")
+    assert r.status_code == 200
+    body = r.json()
+    for section in (
+        "source_weights", "evidence_priors",
+        "task_routing_priors", "hybrid_guardrail_priors",
+    ):
+        assert section in body and isinstance(body[section], list)
+    assert body["representative_seed"] is True
+    assert len(body["source_weights"]) == 5
+
+
+def test_priors_do_not_change_routing_behaviour():
+    # Routing decisions on the sample tasks are unchanged by adding priors.
+    tasks = client.get("/tasks").json()
+    rows = client.post("/route/tasks", json={"tasks": tasks}).json()["task_routing"]
+    decisions = {r["task"]: r["routing"] for r in rows}
+    assert decisions["Documentation"] == "AI_ONLY"
+    assert decisions["Product strategy"] == "HUMAN_ONLY"
+    assert decisions["User research"] == "AI_FIRST_HUMAN_REVIEW"
+
+
+def test_priors_do_not_change_project_mode():
+    # Project Mode still returns the five options and a recommendation.
+    body = client.post("/simulate/project", json=_sample_project()).json()
+    assert len(body["options"]) == 5
+    assert body["recommendation"]["recommended_option"] in body["options"]
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0
