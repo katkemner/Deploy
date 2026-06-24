@@ -736,6 +736,86 @@ def test_calibration_does_not_change_routing_or_project_mode():
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
+# ---------------------------------------------------------------------------
+# Calibration apply flow (manual; no auto-apply)
+# ---------------------------------------------------------------------------
+
+def _reset_calibration_store():
+    d = os.path.join(ROOT, "data", "calibration")
+    for name in ("actuals.json", "applied_config.json", "proposal_state.json"):
+        p = os.path.join(d, name)
+        if os.path.exists(p):
+            os.remove(p)
+
+
+def test_calibration_proposals_generated_not_applied():
+    _reset_calibration_store()
+    client.post("/calibration/actuals", json=_actuals_payload(project_id="AP1"))
+    body = client.get("/calibration/proposals").json()
+    assert len(body["proposals"]) == 6
+    assert all(not p["applied"] for p in body["proposals"])
+    # Config still neutral before any apply.
+    assert body["current_config"]["task_duration_multiplier"] == 1.0
+    _reset_calibration_store()
+
+
+def test_calibration_apply_updates_only_selected():
+    _reset_calibration_store()
+    client.post("/calibration/actuals", json=_actuals_payload(project_id="AP2"))
+    res = client.post("/calibration/apply", json={
+        "proposal_ids": ["AP2::task_duration_multiplier"], "apply_notes": "test",
+    }).json()
+    assert res["updated_config"]["task_duration_multiplier"] == 1.25  # 125/100
+    assert res["updated_config"]["review_time_multiplier"] == 1.0     # unselected
+    assert len(res["applied_proposals"]) == 1
+    _reset_calibration_store()
+
+
+def test_calibration_reject_does_not_update_config():
+    _reset_calibration_store()
+    client.post("/calibration/actuals", json=_actuals_payload(project_id="AP3"))
+    client.post("/calibration/reject", json={"proposal_ids": ["AP3::rework_multiplier"]})
+    apply = client.post("/calibration/apply", json={
+        "proposal_ids": ["AP3::rework_multiplier"],
+    }).json()
+    assert apply["applied_proposals"] == []
+    assert apply["updated_config"]["rework_multiplier"] == 1.0
+    _reset_calibration_store()
+
+
+def test_calibration_apply_invalid_id_safe():
+    _reset_calibration_store()
+    client.post("/calibration/actuals", json=_actuals_payload(project_id="AP4"))
+    res = client.post("/calibration/apply", json={"proposal_ids": ["bogus"]}).json()
+    assert res["applied_proposals"] == []
+    assert res["rejected_or_skipped_proposals"][0]["reason"] == "unknown proposal id"
+    _reset_calibration_store()
+
+
+def test_calibration_apply_requires_ids():
+    r = client.post("/calibration/apply", json={"proposal_ids": []})
+    assert r.status_code == 422
+
+
+def test_calibration_apply_does_not_change_routing_or_project_mode():
+    _reset_calibration_store()
+    client.post("/calibration/actuals", json=_actuals_payload(project_id="AP5"))
+    client.post("/calibration/apply", json={
+        "proposal_ids": ["AP5::task_duration_multiplier"],
+    })
+    # Routing decisions and Project Mode are unaffected by applied calibration.
+    tasks = client.get("/tasks").json()
+    decisions = {
+        r["task"]: r["routing"]
+        for r in client.post("/route/tasks", json={"tasks": tasks}).json()["task_routing"]
+    }
+    assert decisions["Documentation"] == "AI_ONLY"
+    assert decisions["Product strategy"] == "HUMAN_ONLY"
+    body = client.post("/simulate/project", json=_sample_project()).json()
+    assert len(body["options"]) == 5
+    _reset_calibration_store()
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

@@ -400,8 +400,40 @@ A **Calibration** panel under *Data and Settings* provides a form for entering
 actuals, a prediction-vs-actual error table, the suggested multipliers, and the
 label *"Calibration suggestions are not applied automatically."*
 
-A future slice could choose to apply calibrated multipliers; this scaffold only
-measures and suggests.
+#### Manual calibration apply flow (opt-in, traceable)
+
+Building on the scaffold, users can **review and manually apply** suggested
+multiplier updates. Nothing is ever applied automatically — each proposal must
+be explicitly selected and applied.
+
+- `GET /calibration/proposals` — one `CalibrationUpdateProposal` per
+  calibration multiplier per stored project (`current_value`, `suggested_value`,
+  `reason`, `error_pct`, `confidence`, `applied`, `rejected`), plus the current
+  calibration config.
+- `POST /calibration/apply` — apply **only** the selected `proposal_ids`. Each
+  applied proposal updates one of the six calibration multipliers
+  (`task_duration_multiplier`, `review_time_multiplier`, `rework_multiplier`,
+  `dependency_buffer_multiplier`, `skill_gap_penalty`,
+  `context_switching_penalty`) and records provenance (`updated_by:
+  CALIBRATION_APPLY_FLOW`, `source_project_id`, `previous_value`, `new_value`,
+  `reason`). Returns applied vs skipped proposals and the updated config.
+- `POST /calibration/reject` — mark proposals rejected (no config change).
+
+The applied multipliers live in a **dedicated, git-ignored calibration config
+file** (`data/calibration/applied_config.json`) — separate from
+`scoring_weights.json` — so `POST /config` can never clobber them. Calibration
+**cannot** touch source weights, public prior values, or routing / Monte Carlo /
+optimizer / task-matching logic.
+
+The Calibration panel adds a proposals table (current vs suggested value,
+reason, confidence, a select checkbox), **Apply selected** / **Reject selected**
+buttons, and the warning *"Applying calibration updates may change future
+simulation outputs."*
+
+**Scope note:** applying updates the calibration **config values** (traceably);
+the engine formulas do **not** yet consume these multipliers, so simulation
+*outputs* are unchanged until a future slice wires them in. This keeps the
+"no behaviour change" guarantee while making the values available and auditable.
 
 #### Endpoints
 
@@ -418,6 +450,9 @@ measures and suggests.
 | `POST /calibration/actuals` | Store a completed project's actuals + return the comparison |
 | `POST /calibration/compare` | Compare actuals to predictions without storing |
 | `GET /calibration/summary` | Aggregate error summary + biggest misses across stored actuals |
+| `GET /calibration/proposals` | Multiplier-update proposals from stored actuals (nothing applied) |
+| `POST /calibration/apply` | Apply only the selected proposals to the calibration config (traceable) |
+| `POST /calibration/reject` | Mark selected proposals rejected (no config change) |
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
 | `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |

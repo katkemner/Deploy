@@ -39,6 +39,10 @@ export default function CalibrationPanel() {
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [proposals, setProposals] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
+  const [applyNotes, setApplyNotes] = useState('');
+  const [applyMsg, setApplyMsg] = useState(null);
 
   async function loadSummary() {
     try {
@@ -47,7 +51,50 @@ export default function CalibrationPanel() {
       /* best-effort */
     }
   }
-  useEffect(() => { loadSummary(); }, []);
+  async function loadProposals() {
+    try {
+      const res = await api.getCalibrationProposals();
+      setProposals(res.proposals || []);
+    } catch {
+      /* best-effort */
+    }
+  }
+  useEffect(() => { loadSummary(); loadProposals(); }, []);
+
+  function toggleSel(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function applySelected() {
+    if (selected.size === 0) return;
+    setApplyMsg(null);
+    try {
+      const res = await api.applyCalibration([...selected], applyNotes);
+      setApplyMsg({ type: 'success',
+        text: `Applied ${res.applied_proposals.length}, skipped ${res.rejected_or_skipped_proposals.length}.` });
+      setSelected(new Set());
+      await loadProposals();
+    } catch (err) {
+      setApplyMsg({ type: 'error', text: err.message });
+    }
+  }
+
+  async function rejectSelected() {
+    if (selected.size === 0) return;
+    setApplyMsg(null);
+    try {
+      const res = await api.rejectCalibration([...selected]);
+      setApplyMsg({ type: 'success', text: `Rejected ${res.rejected_proposals.length}.` });
+      setSelected(new Set());
+      await loadProposals();
+    } catch (err) {
+      setApplyMsg({ type: 'error', text: err.message });
+    }
+  }
 
   const setField = (k, v) => setForm({ ...form, [k]: v });
 
@@ -63,6 +110,7 @@ export default function CalibrationPanel() {
       const res = await api.submitActuals(payload);
       setResult(res.comparison);
       await loadSummary();
+      await loadProposals();
     } catch (err) {
       setError(err.message);
       setResult(null);
@@ -182,6 +230,77 @@ export default function CalibrationPanel() {
             </div>
           )}
           <div className="explanation">{result.explanation}</div>
+        </div>
+      )}
+
+      {proposals.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <h3 style={{ fontSize: 15 }}>Suggested multiplier updates (proposals)</h3>
+          <div className="msg" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}>
+            ⚠ Applying calibration updates may change future simulation outputs.
+          </div>
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Project</th>
+                  <th>Multiplier</th>
+                  <th>Current</th>
+                  <th>Suggested</th>
+                  <th>Confidence</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {proposals.map((p) => (
+                  <tr key={p.proposal_id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(p.proposal_id)}
+                        onChange={() => toggleSel(p.proposal_id)}
+                      />
+                    </td>
+                    <td>{p.project_id}</td>
+                    <td>{p.current_multiplier_name}</td>
+                    <td>{p.current_value}</td>
+                    <td>{p.suggested_value}</td>
+                    <td>{p.confidence}</td>
+                    <td>
+                      {p.applied ? (
+                        <span className="badge badge-valid">applied</span>
+                      ) : p.rejected ? (
+                        <span className="badge badge-invalid">rejected</span>
+                      ) : (
+                        <span className="muted">pending</span>
+                      )}
+                    </td>
+                    <td style={{ whiteSpace: 'normal', minWidth: 240 }}>{p.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <label className="field" style={{ maxWidth: 420 }}>
+            <span>Apply notes (optional)</span>
+            <input value={applyNotes} onChange={(e) => setApplyNotes(e.target.value)} />
+          </label>
+          <div className="card-actions" style={{ marginTop: 4 }}>
+            <button className="btn btn-primary" onClick={applySelected} disabled={selected.size === 0}>
+              Apply selected updates
+            </button>
+            <button className="btn" onClick={rejectSelected} disabled={selected.size === 0}>
+              Reject selected updates
+            </button>
+            <span className="muted">{selected.size} selected</span>
+          </div>
+          {applyMsg && (
+            <div className={`msg ${applyMsg.type === 'error' ? 'msg-error' : 'msg-success'}`}>
+              {applyMsg.text}
+            </div>
+          )}
         </div>
       )}
 

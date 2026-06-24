@@ -28,6 +28,8 @@ from models import Team
 from .schemas import (
     AIAgent,
     Employee,
+    CalibrationApplyRequest,
+    CalibrationRejectRequest,
     HealthResponse,
     HistoricalProjectActualInput,
     ManualTeamRequest,
@@ -57,6 +59,8 @@ AI_AGENTS_CSV = os.path.join(DATA_DIR, "ai_agents.csv")
 TASKS_CSV = os.path.join(DATA_DIR, "project_tasks.csv")
 PRIORS_PATH = os.path.join(DATA_DIR, "priors", "public_priors_seed.json")
 CALIBRATION_STORE = os.path.join(DATA_DIR, "calibration", "actuals.json")
+CALIBRATION_CONFIG = os.path.join(DATA_DIR, "calibration", "applied_config.json")
+CALIBRATION_STATE = os.path.join(DATA_DIR, "calibration", "proposal_state.json")
 
 # Required columns for upload validation.
 EMPLOYEE_COLUMNS = [
@@ -256,6 +260,45 @@ def compare_actuals(request: HistoricalProjectActualInput) -> dict:
 def calibration_summary() -> dict:
     """Aggregate error summary + biggest misses across all stored actuals."""
     return calibration.summarize(CALIBRATION_STORE)
+
+
+@router.get("/calibration/proposals", tags=["calibration"])
+def calibration_proposals() -> dict:
+    """Update proposals derived from stored actuals (none applied automatically).
+
+    Each proposal shows the current vs suggested multiplier value, the reason,
+    error %, confidence, and whether it has been applied/rejected.
+    """
+    proposals = calibration.all_proposals(
+        CALIBRATION_STORE, CALIBRATION_CONFIG, CALIBRATION_STATE
+    )
+    cfg = calibration.load_calibration_config(CALIBRATION_CONFIG)
+    return {
+        "proposals": proposals,
+        "current_config": cfg["multipliers"],
+        "note": "Proposals are suggestions; nothing is applied until you explicitly apply it.",
+    }
+
+
+@router.post("/calibration/apply", tags=["calibration"])
+def calibration_apply(request: CalibrationApplyRequest) -> dict:
+    """Apply ONLY the selected proposals to the calibration config (traceable).
+
+    Updates the six calibration multipliers, records provenance
+    (updated_by=CALIBRATION_APPLY_FLOW), and marks the proposals applied.
+    """
+    return calibration.apply_proposals(
+        request.proposal_ids, request.apply_notes,
+        CALIBRATION_STORE, CALIBRATION_CONFIG, CALIBRATION_STATE,
+    )
+
+
+@router.post("/calibration/reject", tags=["calibration"])
+def calibration_reject(request: CalibrationRejectRequest) -> dict:
+    """Mark the selected proposals rejected (no config change)."""
+    return calibration.reject_proposals(
+        request.proposal_ids, CALIBRATION_STORE, CALIBRATION_STATE
+    )
 
 
 # ---------------------------------------------------------------------------
