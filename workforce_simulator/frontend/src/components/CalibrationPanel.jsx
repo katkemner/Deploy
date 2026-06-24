@@ -1,0 +1,197 @@
+import React, { useEffect, useState } from 'react';
+import { api } from '../api/client.js';
+
+// Read/enter historical project actuals and compare them to predictions.
+// Suggested multiplier updates are shown but NEVER applied automatically.
+
+// Numeric prediction/actual pairs to collect.
+const PAIRS = [
+  ['duration', 'Duration (h)'],
+  ['cost', 'Cost ($)'],
+  ['human_hours', 'Human hours'],
+  ['review_hours', 'Review hours'],
+  ['rework_hours', 'Rework hours'],
+];
+
+const BLANK = {
+  project_id: 'P-001',
+  project_name: 'Sample completed project',
+  project_type: 'software',
+  predicted_duration: 96, actual_duration: 120,
+  predicted_cost: 17000, actual_cost: 19500,
+  predicted_human_hours: 180, actual_human_hours: 205,
+  predicted_review_hours: 22, actual_review_hours: 33,
+  predicted_rework_hours: 12, actual_rework_hours: 20,
+  predicted_bottleneck: 'Alex', actual_bottleneck: 'Maya',
+};
+
+const ERROR_ROWS = [
+  ['duration_error_pct', 'Duration'],
+  ['cost_error_pct', 'Cost'],
+  ['human_hours_error_pct', 'Human hours'],
+  ['review_hours_error_pct', 'Review hours'],
+  ['rework_hours_error_pct', 'Rework hours'],
+];
+
+export default function CalibrationPanel() {
+  const [form, setForm] = useState(BLANK);
+  const [result, setResult] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function loadSummary() {
+    try {
+      setSummary(await api.getCalibrationSummary());
+    } catch {
+      /* best-effort */
+    }
+  }
+  useEffect(() => { loadSummary(); }, []);
+
+  const setField = (k, v) => setForm({ ...form, [k]: v });
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = { ...form };
+      PAIRS.forEach(([k]) => {
+        payload[`predicted_${k}`] = Number(form[`predicted_${k}`]);
+        payload[`actual_${k}`] = Number(form[`actual_${k}`]);
+      });
+      const res = await api.submitActuals(payload);
+      setResult(res.comparison);
+      await loadSummary();
+    } catch (err) {
+      setError(err.message);
+      setResult(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const sm = result && result.suggested_multiplier_updates;
+
+  return (
+    <div className="card">
+      <h2>Calibration</h2>
+      <p className="section-hint">
+        Enter the actual outcomes of a completed project to compare them with
+        the simulator's predictions.
+      </p>
+      <div className="msg" style={{ background: '#eef2ff', color: '#4338ca', border: '1px solid var(--border)' }}>
+        <strong>Calibration suggestions are not applied automatically.</strong>
+      </div>
+
+      {/* Identity */}
+      <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+        <label className="field"><span>Project id</span>
+          <input value={form.project_id} onChange={(e) => setField('project_id', e.target.value)} />
+        </label>
+        <label className="field"><span>Project name</span>
+          <input value={form.project_name} onChange={(e) => setField('project_name', e.target.value)} />
+        </label>
+        <label className="field"><span>Project type</span>
+          <input value={form.project_type} onChange={(e) => setField('project_type', e.target.value)} />
+        </label>
+      </div>
+
+      {/* Predicted vs actual numeric pairs */}
+      <div className="table-scroll">
+        <table className="table">
+          <thead>
+            <tr><th>Metric</th><th>Predicted</th><th>Actual</th></tr>
+          </thead>
+          <tbody>
+            {PAIRS.map(([k, label]) => (
+              <tr key={k}>
+                <td>{label}</td>
+                <td>
+                  <input type="number" min="0" style={{ width: 110 }}
+                    value={form[`predicted_${k}`]}
+                    onChange={(e) => setField(`predicted_${k}`, e.target.value)} />
+                </td>
+                <td>
+                  <input type="number" min="0" style={{ width: 110 }}
+                    value={form[`actual_${k}`]}
+                    onChange={(e) => setField(`actual_${k}`, e.target.value)} />
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td>Bottleneck</td>
+              <td>
+                <input value={form.predicted_bottleneck}
+                  onChange={(e) => setField('predicted_bottleneck', e.target.value)} />
+              </td>
+              <td>
+                <input value={form.actual_bottleneck}
+                  onChange={(e) => setField('actual_bottleneck', e.target.value)} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card-actions" style={{ marginTop: 8 }}>
+        <button className="btn btn-primary" onClick={submit} disabled={busy}>
+          {busy ? 'Comparing…' : 'Compare actuals to prediction'}
+        </button>
+      </div>
+      {error && <div className="msg msg-error">{error}</div>}
+
+      {result && (
+        <div style={{ marginTop: 14 }}>
+          <h3 style={{ fontSize: 15 }}>Prediction vs actual — error summary</h3>
+          <div className="table-scroll">
+            <table className="table">
+              <thead><tr><th>Metric</th><th>Error %</th></tr></thead>
+              <tbody>
+                {ERROR_ROWS.map(([k, label]) => (
+                  <tr key={k}>
+                    <td>{label}</td>
+                    <td>{result[k] === null ? '—' : `${result[k]}%`}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>Bottleneck predicted correctly?</td>
+                  <td>{result.bottleneck_correct ? 'yes' : 'no'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style={{ fontSize: 15 }}>Suggested multiplier updates</h3>
+          <p className="section-hint">
+            Informational only — these are <strong>not</strong> applied to
+            scoring or simulation.
+          </p>
+          {sm && (
+            <div className="table-scroll">
+              <table className="table">
+                <tbody>
+                  {Object.entries(sm).map(([k, v]) => (
+                    <tr key={k}>
+                      <td>{k.replace(/_/g, ' ')}</td>
+                      <td>{v}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="explanation">{result.explanation}</div>
+        </div>
+      )}
+
+      {summary && summary.project_count > 0 && (
+        <p className="section-hint" style={{ marginTop: 12 }}>
+          History: {summary.project_count} project(s) recorded · mean absolute
+          duration error {summary.mean_absolute_error_pct.duration_error_pct ?? '—'}% ·
+          bottleneck accuracy {summary.bottleneck_accuracy ?? '—'}.
+        </p>
+      )}
+    </div>
+  );
+}

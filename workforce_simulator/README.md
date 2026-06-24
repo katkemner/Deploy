@@ -51,6 +51,7 @@ workforce_simulator/
 │   ├── config_loader.py       # loads scoring_weights.json
 │   ├── priors.py              # public evidence priors (foundation + loader)
 │   ├── prior_matching.py      # deterministic task-to-prior matching (preview)
+│   ├── calibration.py         # historical actuals vs predictions (informational)
 │   ├── data_loader.py         # reads CSVs into model objects
 │   ├── models.py              # Worker / Task / Team / Assignment models
 │   ├── simulator.py           # task assignment + per-team metrics
@@ -376,6 +377,32 @@ blend ratio).
 matched-prior selection uses the deterministic text matcher; values remain
 representative seeds, not calibrated data.
 
+### Historical calibration scaffold (informational only)
+
+`src/calibration.py` lets a user record the **actual** outcomes of a completed
+project and compare them to what the simulator predicted. It computes signed
+**error percentages** (duration, cost, human hours, review, rework), checks
+whether the **bottleneck** was predicted correctly, and **suggests** multiplier
+updates — `task_duration_multiplier`, `review_time_multiplier`,
+`rework_multiplier`, `dependency_buffer_multiplier`, `skill_gap_penalty`,
+`context_switching_penalty`. **These suggestions are informational and are never
+applied** — no scoring or simulation behaviour changes (every comparison carries
+`applied: false`). No ML, LLM, external API, or database: actuals live in a
+local, git-ignored JSON file.
+
+- `POST /calibration/actuals` — store a completed project's actuals and return
+  its comparison.
+- `POST /calibration/compare` — compare without storing.
+- `GET /calibration/summary` — aggregate mean-absolute errors, bottleneck
+  accuracy, and the biggest misses across all stored projects.
+
+A **Calibration** panel under *Data and Settings* provides a form for entering
+actuals, a prediction-vs-actual error table, the suggested multipliers, and the
+label *"Calibration suggestions are not applied automatically."*
+
+A future slice could choose to apply calibrated multipliers; this scaffold only
+measures and suggests.
+
 #### Endpoints
 
 | Method & path | What it does |
@@ -388,6 +415,9 @@ representative seeds, not calibrated data.
 | `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
 | `GET /priors` | Loaded public evidence priors (representative seed; not yet wired to routing) |
 | `POST /priors/match-tasks` | Closest-prior match per task (preview only; not used for scoring) |
+| `POST /calibration/actuals` | Store a completed project's actuals + return the comparison |
+| `POST /calibration/compare` | Compare actuals to predictions without storing |
+| `GET /calibration/summary` | Aggregate error summary + biggest misses across stored actuals |
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
 | `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |
