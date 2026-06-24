@@ -105,6 +105,7 @@ export const api = {
   submitActuals: (actual) => jsonPost('/calibration/actuals', actual),
   getCalibrationSummary: () => request('/calibration/summary'),
   getCalibrationProposals: () => request('/calibration/proposals'),
+  getCalibrationActive: () => request('/calibration/active'),
   applyCalibration: (proposalIds, applyNotes) =>
     jsonPost('/calibration/apply', { proposal_ids: proposalIds, apply_notes: applyNotes }),
   rejectCalibration: (proposalIds) =>

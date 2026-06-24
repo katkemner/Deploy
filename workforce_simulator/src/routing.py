@@ -390,19 +390,28 @@ def estimate_ai_time_saved(decision: str, effort: float) -> float:
 # Per-task and project-level routing
 # ---------------------------------------------------------------------------
 
-def route_task(task, binding=None, use_priors=False) -> dict:
+def route_task(task, binding=None, use_priors=False, calibration=None) -> dict:
     """Produce the full routing record for one task, including provenance.
 
     When ``use_priors`` is true and ``binding`` is a usable matched prior, the
     eight prior-fillable suitability scores may be supplied/blended from the
     prior (see :func:`derive_scores`); this can change the routing decision.
     When ``use_priors`` is false the record is identical to before.
+
+    ``calibration`` (optional) is a dict of approved multipliers. It does NOT
+    change the routing *decision* or the suitability scores; it only scales the
+    estimated review hours (``review_time_multiplier``) and expected rework
+    hours (``rework_multiplier``), and the net AI-time-saved is recomputed from
+    those scaled values. With ``calibration is None`` the record is unchanged.
     """
     scores, has_profile, sources = derive_scores(task, binding, use_priors)
     decision, explanation = decide_route(scores, has_profile)
     effort = float(_get_attr(task, "effort_hours", 0) or 0)
     review = estimate_review_hours(decision, scores or {}, effort)
     rework = estimate_rework_hours(decision, scores or {}, effort)
+    if calibration:
+        review = round(review * calibration.get("review_time_multiplier", 1.0), 2)
+        rework = round(rework * calibration.get("rework_multiplier", 1.0), 2)
     saved = estimate_ai_time_saved(decision, effort)
     net = round(saved - review - rework, 2)
     score_values = scores or {f: None for f in SCORE_FIELDS}
@@ -479,17 +488,19 @@ def route_task(task, binding=None, use_priors=False) -> dict:
     }
 
 
-def route_tasks(tasks, bindings=None, use_priors=False) -> List[dict]:
+def route_tasks(tasks, bindings=None, use_priors=False, calibration=None) -> List[dict]:
     """Routing records for every task, preserving order.
 
     ``bindings`` (optional) maps a task name to its matched-prior binding; when
     ``use_priors`` is true, each task's binding feeds prior-backed scoring.
+    ``calibration`` (optional) scales the review/rework estimates per task (see
+    :func:`route_task`).
     """
     records = []
     for t in tasks:
         name = _get_attr(t, "task", "")
         binding = bindings.get(name) if bindings else None
-        records.append(route_task(t, binding, use_priors))
+        records.append(route_task(t, binding, use_priors, calibration))
     return records
 
 

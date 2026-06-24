@@ -448,19 +448,53 @@ be explicitly selected and applied.
 
 The applied multipliers live in a **dedicated, git-ignored calibration config
 file** (`data/calibration/applied_config.json`) — separate from
-`scoring_weights.json` — so `POST /config` can never clobber them. Calibration
-**cannot** touch source weights, public prior values, or routing / Monte Carlo /
-optimizer / task-matching logic.
+`scoring_weights.json` — so `POST /config` can never clobber them. Applying a
+proposal only updates the calibration **config values** (traceably); whether the
+engine then *consumes* them is governed by the consumption flag below.
+Calibration **cannot** touch source weights, public prior values, or the routing
+**decision rules** / task-matching logic — approved multipliers only scale the
+duration, review/rework, and risk *estimates* when consumption is enabled.
 
 The Calibration panel adds a proposals table (current vs suggested value,
 reason, confidence, a select checkbox), **Apply selected** / **Reject selected**
 buttons, and the warning *"Applying calibration updates may change future
 simulation outputs."*
 
-**Scope note:** applying updates the calibration **config values** (traceably);
-the engine formulas do **not** yet consume these multipliers, so simulation
-*outputs* are unchanged until a future slice wires them in. This keeps the
-"no behaviour change" guarantee while making the values available and auditable.
+#### Calibration consumption (engine applies approved multipliers)
+
+Once multipliers are approved (above), the engine **consumes** them on future
+simulations:
+
+- `task_duration_multiplier` and `dependency_buffer_multiplier` scale each task's
+  scheduled duration (the latter only for tasks that have dependencies). Worker
+  cost and workload are unchanged — only the schedule/critical path shift.
+- `review_time_multiplier` and `rework_multiplier` scale the routing layer's
+  estimated review and rework hours (the routing **decision** is never changed),
+  and `net_ai_time_saved` is recomputed from the scaled values.
+- `skill_gap_penalty` and `context_switching_penalty` raise the risk score in
+  proportion to uncovered required skills and member overload, respectively.
+
+A tri-state config flag, **`use_calibration_multipliers`**, controls this:
+
+- `null` (default) — **auto**: enabled if an applied calibration config exists,
+  otherwise disabled. So with no approved multipliers, **behaviour is identical**
+  to before.
+- `true` — consume approved multipliers (still neutral if none applied).
+- `false` — ignore them **without deleting** the applied config.
+
+Every simulation response (`/simulate/project`, `/simulate/uncertainty`,
+`/route/tasks`) carries a calibration block: `calibration_multipliers_enabled`,
+`calibration_multipliers_applied` (the effective values), and
+`calibration_provenance` (per applied multiplier: `multiplier_name`, `value`,
+`source_project_id`, `previous_value`, `reason`, `updated_by`). `GET
+/calibration/active` reports the same block plus all current multiplier values
+and descriptions. The Calibration panel adds a **"Use approved calibration
+multipliers"** toggle, a read-only active-multipliers table, and the warning
+*"Approved calibration multipliers may change future simulation outputs."*
+
+Applied multipliers still live only in the **dedicated, git-ignored**
+`data/calibration/applied_config.json` — consumption never reads or changes
+source weights, public prior values, or the routing decision rules.
 
 #### Endpoints
 
@@ -480,6 +514,7 @@ the engine formulas do **not** yet consume these multipliers, so simulation
 | `GET /calibration/proposals` | Multiplier-update proposals from stored actuals (nothing applied) |
 | `POST /calibration/apply` | Apply only the selected proposals to the calibration config (traceable) |
 | `POST /calibration/reject` | Mark selected proposals rejected (no config change) |
+| `GET /calibration/active` | Active approved multipliers the engine is consuming (toggle state + provenance) |
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
 | `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |

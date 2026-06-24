@@ -78,6 +78,19 @@ TASK_COLUMNS = ["task", "required_skill", "effort_hours", "priority"]
 # Small helpers
 # ---------------------------------------------------------------------------
 
+def _active_calibration(config) -> dict:
+    """Resolve the approved calibration to apply for this request.
+
+    Reads the applied calibration config and the config's tri-state
+    ``use_calibration_multipliers`` flag. When no applied config exists (or the
+    flag is false) this is disabled and ``engine_multipliers`` is ``None``, so
+    the simulation behaves exactly as it did before calibration consumption.
+    """
+    return calibration.active_calibration(
+        CALIBRATION_CONFIG, getattr(config, "use_calibration_multipliers", None)
+    )
+
+
 def _worker_to_employee(w) -> Employee:
     return Employee(
         name=w.name, role=w.role, skills=w.skills,
@@ -280,6 +293,30 @@ def calibration_proposals() -> dict:
     }
 
 
+@router.get("/calibration/active", tags=["calibration"])
+def calibration_active() -> dict:
+    """Report which approved calibration multipliers the engine is consuming.
+
+    Reflects the current config's ``use_calibration_multipliers`` flag against
+    the applied calibration config. Drives the Calibration panel's toggle,
+    active-multipliers table, and provenance display. When no applied config
+    exists (or the flag is off) this is disabled and simulations are unaffected.
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    active = _active_calibration(config)
+    cfg = calibration.load_calibration_config(CALIBRATION_CONFIG)
+    return {
+        "config_exists": active["config_exists"],
+        "use_calibration_multipliers": config.use_calibration_multipliers,
+        "multipliers": cfg["multipliers"],
+        "descriptions": calibration.MULTIPLIER_DESCRIPTIONS,
+        "warning": (
+            "Approved calibration multipliers may change future simulation outputs."
+        ),
+        **active["response"],
+    }
+
+
 @router.post("/calibration/apply", tags=["calibration"])
 def calibration_apply(request: CalibrationApplyRequest) -> dict:
     """Apply ONLY the selected proposals to the calibration config (traceable).
@@ -310,7 +347,11 @@ def simulate() -> List[dict]:
     """Run the full engine on the current CSV data + config; top 5 teams."""
     config = config_loader.load_config(CONFIG_PATH)
     employees, ai_agents, tasks = data_loader.load_all(DATA_DIR)
-    results = optimizer.rank_teams(employees, ai_agents, tasks, config, top_n=5)
+    active = _active_calibration(config)
+    results = optimizer.rank_teams(
+        employees, ai_agents, tasks, config, top_n=5,
+        calibration=active["engine_multipliers"],
+    )
 
     # Persist outputs so ``GET /outputs/latest`` reflects this run.
     exporter.export_json(results, RESULTS_JSON)
@@ -349,7 +390,10 @@ def simulate_manual_team(request: ManualTeamRequest) -> dict:
         humans=[humans_by_name[n] for n in request.human_names],
         ai_agents=[ais_by_name[n] for n in request.ai_agent_names],
     )
-    result = optimizer.simulate_single_team(team, tasks, config)
+    active = _active_calibration(config)
+    result = optimizer.simulate_single_team(
+        team, tasks, config, calibration=active["engine_multipliers"]
+    )
     return exporter.result_to_dict(result)
 
 
@@ -371,10 +415,11 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
         _prior_bindings(task_dicts)
         if config.use_public_priors_for_scoring else None
     )
+    active = _active_calibration(config)
     try:
         response = project_mode.run_project_simulation(
             employees, ai_agents, request.model_dump(), config,
-            prior_bindings=bindings,
+            prior_bindings=bindings, calibration=active["engine_multipliers"],
         )
     except project_mode.ProjectModeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -383,6 +428,8 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
     # any routing/scoring/recommendation produced above - it only annotates the
     # task_routing records with the closest matching prior.
     _attach_prior_match_preview(response, [t.model_dump() for t in request.tasks])
+    # Surface which approved calibration multipliers shaped this run (if any).
+    response.update(active["response"])
     return response
 
 
@@ -418,12 +465,16 @@ def simulate_uncertainty(request: UncertaintyRequest) -> dict:
     config = config_loader.load_config(CONFIG_PATH)
     employees = data_loader.load_employees(EMPLOYEES_CSV)
     ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
+    active = _active_calibration(config)
     try:
-        return montecarlo.run_uncertainty(
-            employees, ai_agents, request.model_dump(), config
+        response = montecarlo.run_uncertainty(
+            employees, ai_agents, request.model_dump(), config,
+            calibration=active["engine_multipliers"],
         )
     except project_mode.ProjectModeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    response.update(active["response"])
+    return response
 
 
 @router.post("/route/tasks", tags=["routing"])
@@ -439,11 +490,16 @@ def route_tasks(request: RouteTasksRequest) -> dict:
     use_priors = config.use_public_priors_for_scoring
     task_dicts = [t.model_dump() for t in request.tasks]
     bindings = _prior_bindings(task_dicts) if use_priors else None
-    records = routing.route_tasks(task_dicts, bindings=bindings, use_priors=use_priors)
+    active = _active_calibration(config)
+    records = routing.route_tasks(
+        task_dicts, bindings=bindings, use_priors=use_priors,
+        calibration=active["engine_multipliers"],
+    )
     return {
         "public_priors_enabled": use_priors,
         "task_routing": records,
         "routing_summary": routing.summarize_routing(records),
+        **active["response"],
     }
 
 

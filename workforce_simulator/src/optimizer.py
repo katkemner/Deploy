@@ -59,6 +59,7 @@ def simulate_all_teams(
     ai_agents: List[Worker],
     tasks: List[Task],
     config: SimConfig,
+    calibration: dict = None,
 ) -> List[SimulationResult]:
     """Generate and simulate every valid team (raw, pre-scoring).
 
@@ -67,10 +68,14 @@ def simulate_all_teams(
     the whole population and are added by ``finalize_scores``). Shared by
     ``rank_teams`` and the Project Mode endpoint so the simulation/scheduling
     logic lives in exactly one place.
+
+    ``calibration`` (optional) is threaded into each team's simulation so
+    approved multipliers affect duration/risk consistently across the
+    population. ``None`` leaves every team's metrics unchanged.
     """
     teams = generate_teams(humans, ai_agents, config)
     require_full = config.require_full_required_skill_coverage
-    return [simulate_team(t, tasks, require_full) for t in teams]
+    return [simulate_team(t, tasks, require_full, calibration) for t in teams]
 
 
 def finalize_scores(results: List[SimulationResult], config: SimConfig) -> None:
@@ -113,9 +118,10 @@ def rank_teams(
     tasks: List[Task],
     config: SimConfig,
     top_n: int = 5,
+    calibration: dict = None,
 ) -> List[SimulationResult]:
     """Simulate every team and return the ``top_n`` ranked results."""
-    results = simulate_all_teams(humans, ai_agents, tasks, config)
+    results = simulate_all_teams(humans, ai_agents, tasks, config, calibration)
     if not results:
         return []
 
@@ -145,7 +151,7 @@ def rank_teams(
 
 
 def simulate_single_team(
-    team: Team, tasks: List[Task], config: SimConfig
+    team: Team, tasks: List[Task], config: SimConfig, calibration: dict = None
 ) -> SimulationResult:
     """Simulate one explicitly chosen team (used by the API's manual mode).
 
@@ -154,9 +160,12 @@ def simulate_single_team(
     normalise cost against, so ``cost_efficiency_score`` is reported as 100
     (the lone team is trivially the cheapest among the set of size one). Use
     ``rank_teams`` when you need cost efficiency compared across teams.
+
+    ``calibration`` (optional) applies approved multipliers to this team's
+    simulation; ``None`` leaves the metrics unchanged.
     """
     require_full = config.require_full_required_skill_coverage
-    r = simulate_team(team, tasks, require_full)
+    r = simulate_team(team, tasks, require_full, calibration)
     r.cost_efficiency_score = 100.0
     r.total_score = round(
         scoring.total_score(

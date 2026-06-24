@@ -517,3 +517,121 @@ def reject_proposals(proposal_ids, actuals_store, state_path) -> dict:
         "skipped_proposals": skipped,
         "explanation": f"Rejected {len(rejected)} proposal(s); no config changed.",
     }
+
+
+# ===========================================================================
+# Calibration consumption (engine reads approved multipliers)
+# ===========================================================================
+#
+# This is where applied calibration multipliers actually reach the simulation.
+# An applied config existing means the user has approved at least one multiplier
+# update; by default the engine then consumes the *whole* config (all six
+# multipliers, including any still at their neutral default). The user can turn
+# consumption off without deleting the config via ``use_calibration_multipliers``.
+#
+# Two guarantees this module is built to keep:
+#   1. No applied config file  -> ``active_calibration`` reports disabled and
+#      hands the engine ``None``, so every simulation runs exactly as before.
+#   2. Disabled (flag false)   -> same as above, even though the config exists.
+
+# Field-name help text so the API/UI can describe what each multiplier does.
+MULTIPLIER_DESCRIPTIONS = {
+    "task_duration_multiplier": "Scales each task's scheduled duration.",
+    "review_time_multiplier": "Scales estimated human review hours.",
+    "rework_multiplier": "Scales expected AI rework hours.",
+    "dependency_buffer_multiplier": "Adds buffer to tasks that have dependencies.",
+    "skill_gap_penalty": "Raises risk when required skills are uncovered.",
+    "context_switching_penalty": "Raises risk when members are overloaded.",
+}
+
+
+def applied_config_exists(path: str) -> bool:
+    """True when an approved calibration config file is present on disk."""
+    return os.path.exists(path)
+
+
+def resolve_use_flag(path: str, use_flag) -> bool:
+    """Resolve whether calibration multipliers should be consumed.
+
+    ``use_flag`` is the config setting ``use_calibration_multipliers``:
+
+    * ``None``  -> default: enabled iff an applied config file exists.
+    * truthy    -> enabled (but still neutral if no config exists).
+    * falsey    -> disabled, even when an applied config exists.
+    """
+    if use_flag is None:
+        return applied_config_exists(path)
+    return bool(use_flag)
+
+
+def _provenance_payload(multipliers: dict, provenance_log: List[dict]) -> List[dict]:
+    """Build the per-multiplier provenance the API/UI surfaces.
+
+    One entry per multiplier whose value differs from its neutral default,
+    enriched from the latest matching apply-log record.
+    """
+    latest: dict = {}
+    for entry in provenance_log:
+        name = entry.get("multiplier_name")
+        if name is not None:
+            latest[name] = entry  # last write wins -> most recent apply
+    payload = []
+    for name in DEFAULT_CALIBRATION_MULTIPLIERS:
+        value = multipliers.get(name, DEFAULT_CALIBRATION_MULTIPLIERS[name])
+        if value == DEFAULT_CALIBRATION_MULTIPLIERS[name]:
+            continue  # neutral -> nothing was applied for this multiplier
+        entry = latest.get(name, {})
+        payload.append({
+            "multiplier_name": name,
+            "value": value,
+            "source_project_id": entry.get("source_project_id"),
+            "previous_value": entry.get(
+                "previous_value", DEFAULT_CALIBRATION_MULTIPLIERS[name]
+            ),
+            "reason": entry.get("reason"),
+            "updated_by": entry.get("updated_by", CALIBRATION_APPLY_SOURCE),
+        })
+    return payload
+
+
+def active_calibration(path: str, use_flag=None) -> dict:
+    """Resolve the calibration the engine should apply for a simulation run.
+
+    Returns a dict with:
+
+    * ``config_exists``      - whether an applied config file is present.
+    * ``enabled``            - whether multipliers are consumed this run.
+    * ``engine_multipliers`` - the six multipliers to feed the engine, or
+      ``None`` when disabled (engine then behaves exactly as before).
+    * ``response``           - the calibration block to merge into API
+      responses (``calibration_multipliers_enabled`` /
+      ``calibration_multipliers_applied`` / ``calibration_provenance``).
+    """
+    exists = applied_config_exists(path)
+    enabled = resolve_use_flag(path, use_flag)
+    cfg = load_calibration_config(path)
+    multipliers = cfg["multipliers"]
+    provenance_log = cfg["provenance"]
+
+    engine_multipliers = dict(multipliers) if enabled else None
+    if enabled:
+        applied = {
+            name: multipliers.get(name, default)
+            for name, default in DEFAULT_CALIBRATION_MULTIPLIERS.items()
+            if multipliers.get(name, default) != default
+        }
+        provenance_payload = _provenance_payload(multipliers, provenance_log)
+    else:
+        applied = {}
+        provenance_payload = []
+
+    return {
+        "config_exists": exists,
+        "enabled": enabled,
+        "engine_multipliers": engine_multipliers,
+        "response": {
+            "calibration_multipliers_enabled": enabled,
+            "calibration_multipliers_applied": applied,
+            "calibration_provenance": provenance_payload,
+        },
+    }

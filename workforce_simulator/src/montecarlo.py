@@ -112,6 +112,7 @@ def run_uncertainty(
     ai_agents: List[Worker],
     request: dict,
     config: SimConfig,
+    calibration: dict = None,
 ) -> dict:
     """Run the Monte-Carlo uncertainty analysis for one team.
 
@@ -119,6 +120,10 @@ def run_uncertainty(
     team (human + AI agent names), iteration count, seed, and optional
     deadline/budget targets. Raises ``ProjectModeError`` for user-fixable input
     problems (unknown names, empty team/tasks).
+
+    ``calibration`` (optional) applies approved multipliers to the baseline and
+    every sampled iteration, so the uncertainty bands reflect calibration too.
+    ``None`` leaves all iterations unchanged.
     """
     task_dicts = request.get("tasks") or []
     if not task_dicts:
@@ -160,7 +165,9 @@ def run_uncertainty(
     baseline_tasks = [
         replace(base_tasks[i], effort_hours=ranges[i][1]) for i in range(len(base_tasks))
     ]
-    baseline = simulate_team(Team(team.humans, team.ai_agents), baseline_tasks, require_full)
+    baseline = simulate_team(
+        Team(team.humans, team.ai_agents), baseline_tasks, require_full, calibration
+    )
 
     rng = random.Random(seed)
     durations: List[float] = []
@@ -173,7 +180,9 @@ def run_uncertainty(
             )
             for i in range(len(base_tasks))
         ]
-        res = simulate_team(Team(team.humans, team.ai_agents), sampled, require_full)
+        res = simulate_team(
+            Team(team.humans, team.ai_agents), sampled, require_full, calibration
+        )
         durations.append(res.estimated_duration)
         costs.append(res.estimated_cost)
 
