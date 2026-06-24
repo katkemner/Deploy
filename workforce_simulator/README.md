@@ -341,6 +341,41 @@ MEDIUM ≥ 0.45, else LOW**.
 - The **Evidence Priors** panel shows a **Matched Prior Preview** table for the
   sample tasks, labelled *"Preview only. Not yet used for scoring."*
 
+#### Prior-backed scoring (opt-in, off by default)
+
+A config flag, **`use_public_priors_for_scoring`** (default **`false`**), lets
+matched public priors actually supply the routing suitability scores. **When it
+is false, all routing and scoring behaviour is exactly as before** (guaranteed
+and tested). When true, scores follow this override order:
+
+1. **MANUAL_INPUT** — a per-task `routing_scores` override (never overwritten)
+2. **MATCHED_PUBLIC_PRIOR** — from the closest matched `TaskRoutingPrior`
+3. **EXISTING_HEURISTIC** — the skill profile
+4. **DEFAULT_FALLBACK** — a neutral default
+
+Eight of the nine suitability scores can be prior-backed (`ai_capability_fit`,
+`human_judgment_need`, `verification_ease`, `error_cost`, `context_sensitivity`,
+`repetition_level`, `speed_value`, `collaboration_value`); `human_learning_value`
+has no prior and stays heuristic. The prior's 0–100 value is converted to the
+1–5 scale and **blended** with the heuristic by match confidence: **HIGH = 80%
+prior / 20% heuristic, MEDIUM = 50/50, LOW = ignored** (not used). Because the
+blended scores feed the routing rules, a route decision **may change — but only
+when the flag is on**.
+
+Every prior-backed score carries provenance with `source_type =
+MATCHED_PUBLIC_PRIOR`, plus `matched_prior_id`, `match_confidence`, and
+`blend_ratio`. Each task routing record also reports `public_priors_enabled`,
+`matched_prior_used`, `prior_match_confidence`, and a `prior_warning` when the
+match is MEDIUM. The flag is exposed in `GET`/`POST /config`, respected by
+`POST /route/tasks` and `POST /simulate/project`, toggled by a **"Use public
+priors for scoring"** checkbox in *Data and Settings*, and explained in each
+task's **"Why?"** panel (which shows the source, matched-prior confidence, and
+blend ratio).
+
+**Limitations:** priors are blended only where a heuristic profile exists;
+matched-prior selection uses the deterministic text matcher; values remain
+representative seeds, not calibrated data.
+
 #### Endpoints
 
 | Method & path | What it does |

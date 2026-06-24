@@ -36,6 +36,8 @@ class SimConfig:
     max_humans_per_team: int = 5
     min_ai_agents_per_team: int = 0
     max_ai_agents_per_team: int = 2
+    # Opt-in: when true, matched public priors may supply/blend routing scores.
+    use_public_priors_for_scoring: bool = False
 
 
 def _normalise(weights: Dict[str, float]) -> Dict[str, float]:
@@ -64,6 +66,9 @@ def load_config(path: str) -> SimConfig:
         max_humans_per_team=int(raw.get("max_humans_per_team", 5)),
         min_ai_agents_per_team=int(raw.get("min_ai_agents_per_team", 0)),
         max_ai_agents_per_team=int(raw.get("max_ai_agents_per_team", 2)),
+        use_public_priors_for_scoring=bool(
+            raw.get("use_public_priors_for_scoring", False)
+        ),
     )
 
 

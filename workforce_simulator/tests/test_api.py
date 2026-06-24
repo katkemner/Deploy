@@ -596,6 +596,74 @@ def test_prior_matching_does_not_change_routing_or_project_results():
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
+# ---------------------------------------------------------------------------
+# Prior-backed scoring toggle (use_public_priors_for_scoring)
+# ---------------------------------------------------------------------------
+
+def _set_priors_flag(enabled: bool):
+    cfg = client.get("/config").json()
+    cfg = {k: v for k, v in cfg.items() if k != "weight_provenance"}
+    cfg["use_public_priors_for_scoring"] = enabled
+    r = client.post("/config", json=cfg)
+    assert r.status_code == 200
+
+
+def _has_prior_source(rows):
+    return any(
+        p["source_type"] == "MATCHED_PUBLIC_PRIOR"
+        for r in rows for p in r["score_provenance"]
+    )
+
+
+def test_config_exposes_priors_flag_default_false():
+    cfg = client.get("/config").json()
+    assert "use_public_priors_for_scoring" in cfg
+    assert cfg["use_public_priors_for_scoring"] is False
+
+
+def test_priors_flag_persists_through_get_save():
+    original = client.get("/config").json()
+    try:
+        _set_priors_flag(True)
+        assert client.get("/config").json()["use_public_priors_for_scoring"] is True
+    finally:
+        client.post("/config", json={
+            k: v for k, v in original.items() if k != "weight_provenance"
+        })
+    assert client.get("/config").json()["use_public_priors_for_scoring"] is False
+
+
+def test_default_config_keeps_routing_unchanged():
+    # With the flag off (default), no prior-backed scores and known decisions.
+    tasks = client.get("/tasks").json()
+    body = client.post("/route/tasks", json={"tasks": tasks}).json()
+    assert body["public_priors_enabled"] is False
+    assert not _has_prior_source(body["task_routing"])
+    decisions = {r["task"]: r["routing"] for r in body["task_routing"]}
+    assert decisions["Documentation"] == "AI_ONLY"
+    assert decisions["Product strategy"] == "HUMAN_ONLY"
+
+
+def test_enabled_priors_affect_scoring_only_when_on():
+    tasks = client.get("/tasks").json()
+    original = client.get("/config").json()
+    try:
+        _set_priors_flag(True)
+        body = client.post("/route/tasks", json={"tasks": tasks}).json()
+        assert body["public_priors_enabled"] is True
+        assert _has_prior_source(body["task_routing"])
+        # Project Mode still returns five options with priors on.
+        proj = client.post("/simulate/project", json=_sample_project()).json()
+        assert len(proj["options"]) == 5
+    finally:
+        client.post("/config", json={
+            k: v for k, v in original.items() if k != "weight_provenance"
+        })
+    # Back to disabled -> no prior sources again.
+    after = client.post("/route/tasks", json={"tasks": tasks}).json()
+    assert not _has_prior_source(after["task_routing"])
+
+
 # Allow running directly without pytest.
 if __name__ == "__main__":
     failures = 0

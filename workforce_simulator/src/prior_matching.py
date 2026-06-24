@@ -259,3 +259,71 @@ def match_tasks(tasks, bundle, top_n: int = 3) -> List[dict]:
     """Match every task to its closest prior. Returns a list of dicts."""
     candidates = build_candidates(bundle)
     return [match_task(t, candidates, top_n).as_dict() for t in tasks]
+
+
+# ---------------------------------------------------------------------------
+# Score bindings (used only by opt-in prior-backed scoring)
+# ---------------------------------------------------------------------------
+
+# Routing score field -> TaskRoutingPrior attribute (0-100). Eight of the nine
+# routing scores have a prior; human_learning_value does not.
+PRIOR_FIELD_MAP = {
+    "ai_capability_fit": "ai_capability_fit_prior",
+    "human_judgment_need": "human_judgment_need_prior",
+    "verification_ease": "verification_ease_prior",
+    "error_cost": "error_cost_prior",
+    "context_sensitivity": "context_sensitivity_prior",
+    "repetition_level": "repetition_prior",
+    "speed_value": "speed_value_prior",
+    "collaboration_value": "collaboration_value_prior",
+}
+
+
+def best_task_routing_prior(task, bundle) -> Optional[dict]:
+    """Find the closest ``TaskRoutingPrior`` for a task (for score binding).
+
+    Restricts matching to task-routing priors (the only ones with the eight
+    suitability prior fields). Returns ``None`` if there are no such priors.
+    """
+    trp_by_id = {t.prior_id: t for t in bundle.task_routing_priors}
+    cands = [c for c in build_candidates(bundle) if c["prior_type"] == "task_routing_prior"]
+    if not cands:
+        return None
+    _name, task_tokens, required_skill, task_type = _task_fields(task)
+    scored = [
+        (_score_candidate(task_tokens, required_skill, task_type, c), c) for c in cands
+    ]
+    scored.sort(key=lambda sc: (-sc[0], sc[1]["prior_id"]))
+    best_score, best = scored[0]
+    return {
+        "matched_prior_id": best["prior_id"],
+        "match_score": best_score,
+        "match_confidence": confidence_for(best_score),
+        "prior": trp_by_id[best["prior_id"]],
+    }
+
+
+def build_score_bindings(tasks, bundle) -> Dict[str, dict]:
+    """Map each task name to its prior-score binding for prior-backed scoring.
+
+    Each binding carries the matched prior id, match confidence/score, and the
+    eight 0-100 prior values keyed by routing-score field name.
+    """
+    bindings: Dict[str, dict] = {}
+    for t in tasks:
+        m = best_task_routing_prior(t, bundle)
+        if not m:
+            continue
+        trp = m["prior"]
+        prior_fields = {
+            field: float(getattr(trp, attr))
+            for field, attr in PRIOR_FIELD_MAP.items()
+        }
+        name = t.get("task") if isinstance(t, dict) else getattr(t, "task", "")
+        bindings[name] = {
+            "matched_prior_id": m["matched_prior_id"],
+            "match_confidence": m["match_confidence"],
+            "match_score": m["match_score"],
+            "prior_fields": prior_fields,
+        }
+    return bindings

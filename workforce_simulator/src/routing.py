@@ -79,6 +79,35 @@ AI_SPEED_FACTOR = 1.3          # assumed AI speed on its share of the work
 REVIEW_BOTTLENECK_FRACTION = 0.35  # review hrs > this * human capacity = bottleneck
 
 
+# --- Prior-backed scoring (opt-in; see use_public_priors_for_scoring) --------
+# The routing score fields a matched public prior can fill (8 of the 9 - there
+# is no prior for human_learning_value).
+PRIOR_FILLABLE_FIELDS = frozenset({
+    "ai_capability_fit", "human_judgment_need", "verification_ease",
+    "error_cost", "context_sensitivity", "repetition_level", "speed_value",
+    "collaboration_value",
+})
+# Share of the prior (vs the heuristic) when blending, by match confidence.
+# LOW is intentionally absent: a LOW match is never used for scoring.
+PRIOR_BLEND = {"HIGH": 0.8, "MEDIUM": 0.5}
+
+
+def _prior_to_1to5(value: float) -> int:
+    """Convert a 0-100 prior score to the routing 1-5 scale."""
+    return _clamp_score(round(value / 100.0 * 4 + 1))
+
+
+def _meta(source_type, source_name, explanation, **extra) -> dict:
+    """Build a per-field provenance meta dict (kwargs for ``provenance.item``)."""
+    d = {
+        "source_type": source_type,
+        "source_name": source_name,
+        "explanation": explanation,
+    }
+    d.update(extra)
+    return d
+
+
 # Per-skill baseline suitability profiles (1-5). Unknown skills get no
 # profile and route to ESCALATE unless scores are supplied explicitly.
 SKILL_PROFILES: Dict[str, Dict[str, int]] = {
@@ -114,69 +143,121 @@ def _clamp_score(v: int) -> int:
     return max(1, min(5, int(round(v))))
 
 
-def derive_scores(task):
-    """Return ``(scores, has_profile, sources)`` for a task.
-
-    Scores come from an explicit per-task override (``task.routing_scores`` or a
-    dict key) when provided, otherwise from the skill profile table with small
-    deterministic adjustments for required/optional and priority. ``scores`` is
-    ``None`` (and ``has_profile`` False) when no profile or override exists - the
-    caller routes such tasks to ESCALATE.
-
-    ``sources`` maps each score field to a ``(source_type, source_name,
-    explanation)`` tuple. It is metadata only - the score *values* are computed
-    exactly as before.
-    """
-    overrides = _get_attr(task, "routing_scores", None)
-    skill = str(_get_attr(task, "required_skill", "")).strip().lower()
-    is_required = bool(_get_attr(task, "is_required", True))
-    priority = int(_get_attr(task, "priority", 1) or 1)
-
-    if overrides:
-        scores = {f: _clamp_score(overrides.get(f, 3)) for f in SCORE_FIELDS}
-        sources = {}
-        for f in SCORE_FIELDS:
-            if f in overrides:
-                sources[f] = (
-                    provenance.MANUAL_INPUT,
-                    "per-task override",
-                    "Supplied directly as a per-task routing_scores override.",
-                )
-            else:
-                sources[f] = (
-                    provenance.DEFAULT_FALLBACK,
-                    "default score (3)",
-                    "Not included in the override; used the neutral default of 3.",
-                )
-        return scores, True, sources
-
+def _profile_scores(skill, is_required, priority):
+    """Adjusted heuristic profile scores for a skill, or None if unprofiled."""
     profile = SKILL_PROFILES.get(skill)
     if profile is None:
-        sources = {
-            f: (
-                provenance.DEFAULT_FALLBACK,
-                "no skill profile",
-                f"No profile for skill '{skill}' and no override; task escalates.",
-            )
-            for f in SCORE_FIELDS
-        }
-        return None, False, sources
-
+        return None
     scores = dict(profile)
     # Optional work carries less error cost; top-priority work values speed more.
     if not is_required:
         scores["error_cost"] = _clamp_score(scores["error_cost"] - 1)
     if priority == 1:
         scores["speed_value"] = _clamp_score(scores["speed_value"] + 1)
-    sources = {
-        f: (
-            provenance.EXISTING_HEURISTIC,
-            f"skill profile: {skill}",
-            f"Derived from the built-in '{skill}' skill profile.",
-        )
-        for f in SCORE_FIELDS
-    }
-    return scores, True, sources
+    return scores
+
+
+def derive_scores(task, binding=None, use_priors=False):
+    """Return ``(scores, has_profile, meta)`` for a task.
+
+    Override order (highest first): MANUAL_INPUT, MATCHED_PUBLIC_PRIOR (only when
+    ``use_priors`` and a usable ``binding`` is supplied), EXISTING_HEURISTIC,
+    DEFAULT_FALLBACK. ``meta`` maps each field to kwargs for ``provenance.item``.
+
+    When ``use_priors`` is false (or no usable binding), this reproduces the
+    original behaviour exactly - the prior branch is the only thing that can
+    change a score.
+    """
+    overrides = _get_attr(task, "routing_scores", None)
+    skill = str(_get_attr(task, "required_skill", "")).strip().lower()
+    is_required = bool(_get_attr(task, "is_required", True))
+    priority = int(_get_attr(task, "priority", 1) or 1)
+
+    prior_active = bool(
+        use_priors and binding and binding.get("match_confidence") in PRIOR_BLEND
+    )
+
+    # ----- Baseline (unchanged) path -----------------------------------------
+    if not prior_active:
+        if overrides:
+            scores = {f: _clamp_score(overrides.get(f, 3)) for f in SCORE_FIELDS}
+            meta = {}
+            for f in SCORE_FIELDS:
+                if f in overrides:
+                    meta[f] = _meta(
+                        provenance.MANUAL_INPUT, "per-task override",
+                        "Supplied directly as a per-task routing_scores override.")
+                else:
+                    meta[f] = _meta(
+                        provenance.DEFAULT_FALLBACK, "default score (3)",
+                        "Not included in the override; used the neutral default of 3.")
+            return scores, True, meta
+
+        profile_scores = _profile_scores(skill, is_required, priority)
+        if profile_scores is None:
+            meta = {
+                f: _meta(
+                    provenance.DEFAULT_FALLBACK, "no skill profile",
+                    f"No profile for skill '{skill}' and no override; task escalates.")
+                for f in SCORE_FIELDS
+            }
+            return None, False, meta
+        meta = {
+            f: _meta(
+                provenance.EXISTING_HEURISTIC, f"skill profile: {skill}",
+                f"Derived from the built-in '{skill}' skill profile.")
+            for f in SCORE_FIELDS
+        }
+        return profile_scores, True, meta
+
+    # ----- Prior-backed path (opt-in) ----------------------------------------
+    profile_scores = _profile_scores(skill, is_required, priority)
+    blend = PRIOR_BLEND[binding["match_confidence"]]
+    prior_fields = binding.get("prior_fields", {})
+    mpid = binding["matched_prior_id"]
+    mconf = binding["match_confidence"]
+    conf_val = 0.85 if mconf == "HIGH" else 0.6
+
+    scores = {}
+    meta = {}
+    for f in SCORE_FIELDS:
+        if overrides and f in overrides:
+            scores[f] = _clamp_score(overrides[f])
+            meta[f] = _meta(
+                provenance.MANUAL_INPUT, "per-task override",
+                "Supplied directly as a per-task routing_scores override.")
+        elif f in PRIOR_FILLABLE_FIELDS and f in prior_fields:
+            prior_val = _prior_to_1to5(prior_fields[f])
+            if profile_scores is not None:
+                heur = profile_scores[f]
+                value = _clamp_score(round(blend * prior_val + (1 - blend) * heur))
+                blend_ratio = blend
+                prior_pct = round(blend * 100)
+                expl = (
+                    f"Filled from matched public prior {mpid} ({mconf} match): "
+                    f"blended {prior_pct}% prior / {100 - prior_pct}% heuristic.")
+            else:
+                value = prior_val
+                blend_ratio = 1.0
+                expl = (
+                    f"Filled from matched public prior {mpid} ({mconf} match): "
+                    "prior used directly (no heuristic profile).")
+            scores[f] = value
+            meta[f] = _meta(
+                provenance.MATCHED_PUBLIC_PRIOR, f"matched prior: {mpid}", expl,
+                confidence=conf_val, matched_prior_id=mpid,
+                match_confidence=mconf, blend_ratio=blend_ratio)
+        elif profile_scores is not None:
+            scores[f] = profile_scores[f]
+            meta[f] = _meta(
+                provenance.EXISTING_HEURISTIC, f"skill profile: {skill}",
+                f"Derived from the built-in '{skill}' skill profile.")
+        else:
+            scores[f] = 3
+            meta[f] = _meta(
+                provenance.DEFAULT_FALLBACK, "default (no profile)",
+                "No profile or prior for this field; used the neutral default of 3.")
+    return scores, True, meta
 
 
 def _get_attr(obj, name, default):
@@ -309,15 +390,15 @@ def estimate_ai_time_saved(decision: str, effort: float) -> float:
 # Per-task and project-level routing
 # ---------------------------------------------------------------------------
 
-def route_task(task) -> dict:
+def route_task(task, binding=None, use_priors=False) -> dict:
     """Produce the full routing record for one task, including provenance.
 
-    Provenance is additive metadata: ``score_provenance`` explains each of the
-    nine suitability scores, and ``route_provenance`` explains the recommended
-    route and the review / rework / net-AI-time estimates. No score value or
-    decision is changed by adding it.
+    When ``use_priors`` is true and ``binding`` is a usable matched prior, the
+    eight prior-fillable suitability scores may be supplied/blended from the
+    prior (see :func:`derive_scores`); this can change the routing decision.
+    When ``use_priors`` is false the record is identical to before.
     """
-    scores, has_profile, sources = derive_scores(task)
+    scores, has_profile, sources = derive_scores(task, binding, use_priors)
     decision, explanation = decide_route(scores, has_profile)
     effort = float(_get_attr(task, "effort_hours", 0) or 0)
     review = estimate_review_hours(decision, scores or {}, effort)
@@ -328,7 +409,7 @@ def route_task(task) -> dict:
 
     # Provenance for each of the nine suitability scores.
     score_provenance = [
-        provenance.item(f, score_values[f], *sources[f]) for f in SCORE_FIELDS
+        provenance.item(f, score_values[f], **sources[f]) for f in SCORE_FIELDS
     ]
 
     # Provenance for the routing decision is heuristic (a rule fired) unless we
@@ -363,6 +444,20 @@ def route_task(task) -> dict:
         ),
     ]
 
+    # Prior-backed scoring metadata (informational; always present).
+    prior_active = bool(
+        use_priors and binding and binding.get("match_confidence") in PRIOR_BLEND
+    )
+    matched_prior_used = binding["matched_prior_id"] if prior_active else None
+    prior_match_confidence = (
+        binding.get("match_confidence") if (use_priors and binding) else None
+    )
+    prior_warning = None
+    if prior_active and binding["match_confidence"] == "MEDIUM":
+        prior_warning = (
+            f"Matched prior {binding['matched_prior_id']} is MEDIUM confidence; "
+            "affected scores were blended 50/50 with the heuristic.")
+
     return {
         "task": _get_attr(task, "task", ""),
         "required_skill": _get_attr(task, "required_skill", ""),
@@ -377,12 +472,25 @@ def route_task(task) -> dict:
         "ai_involvement_fraction": AI_INVOLVEMENT.get(decision, 0.0),
         "score_provenance": score_provenance,
         "route_provenance": route_provenance,
+        "public_priors_enabled": bool(use_priors),
+        "matched_prior_used": matched_prior_used,
+        "prior_match_confidence": prior_match_confidence,
+        "prior_warning": prior_warning,
     }
 
 
-def route_tasks(tasks) -> List[dict]:
-    """Routing records for every task, preserving order."""
-    return [route_task(t) for t in tasks]
+def route_tasks(tasks, bindings=None, use_priors=False) -> List[dict]:
+    """Routing records for every task, preserving order.
+
+    ``bindings`` (optional) maps a task name to its matched-prior binding; when
+    ``use_priors`` is true, each task's binding feeds prior-backed scoring.
+    """
+    records = []
+    for t in tasks:
+        name = _get_attr(t, "task", "")
+        binding = bindings.get(name) if bindings else None
+        records.append(route_task(t, binding, use_priors))
+    return records
 
 
 def summarize_routing(records: List[dict]) -> dict:

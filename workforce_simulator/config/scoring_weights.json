@@ -11,5 +11,6 @@
   "min_humans_per_team": 2,
   "max_humans_per_team": 5,
   "min_ai_agents_per_team": 0,
-  "max_ai_agents_per_team": 2
+  "max_ai_agents_per_team": 2,
+  "use_public_priors_for_scoring": false
 }

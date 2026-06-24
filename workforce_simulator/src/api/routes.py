@@ -283,9 +283,15 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
     # Current employees + AI agents come from CSV; tasks come from the request.
     employees = data_loader.load_employees(EMPLOYEES_CSV)
     ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
+    task_dicts = [t.model_dump() for t in request.tasks]
+    bindings = (
+        _prior_bindings(task_dicts)
+        if config.use_public_priors_for_scoring else None
+    )
     try:
         response = project_mode.run_project_simulation(
-            employees, ai_agents, request.model_dump(), config
+            employees, ai_agents, request.model_dump(), config,
+            prior_bindings=bindings,
         )
     except project_mode.ProjectModeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -342,13 +348,29 @@ def route_tasks(request: RouteTasksRequest) -> dict:
     """Task-level human/AI routing for a set of tasks (no team required).
 
     Returns the routing decision, 1-5 suitability scores, explanation, and
-    review/rework/AI-time estimates per task, plus project-level totals.
+    review/rework/AI-time estimates per task, plus project-level totals. When
+    ``use_public_priors_for_scoring`` is enabled in the config, matched public
+    priors may supply/blend the suitability scores (with full provenance).
     """
-    records = routing.route_tasks([t.model_dump() for t in request.tasks])
+    config = config_loader.load_config(CONFIG_PATH)
+    use_priors = config.use_public_priors_for_scoring
+    task_dicts = [t.model_dump() for t in request.tasks]
+    bindings = _prior_bindings(task_dicts) if use_priors else None
+    records = routing.route_tasks(task_dicts, bindings=bindings, use_priors=use_priors)
     return {
+        "public_priors_enabled": use_priors,
         "task_routing": records,
         "routing_summary": routing.summarize_routing(records),
     }
+
+
+def _prior_bindings(task_dicts: list):
+    """Build prior-score bindings for tasks, or None if priors can't load."""
+    try:
+        bundle = priors.load_priors(PRIORS_PATH)
+    except priors.PriorsError:
+        return None
+    return prior_matching.build_score_bindings(task_dicts, bundle)
 
 
 # ---------------------------------------------------------------------------

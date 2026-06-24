@@ -54,8 +54,12 @@ Open the app at **http://localhost:5173**.
   histogram. Reproducible via a seed.
 - **Routing provenance (“Why?”):** each routed task has an expandable **Why?**
   panel showing, for every score and routing output, where it came from
-  (manual input / built-in heuristic / default fallback), with a source name,
-  confidence, and explanation.
+  (manual input / matched public prior / built-in heuristic / default fallback),
+  with a source name, confidence, and explanation.
+- **Prior-backed scoring toggle (opt-in):** a *Use public priors for scoring*
+  checkbox in *Data and Settings* (off by default). When on, matched public
+  priors supply/blend the routing scores; the **Why?** panel shows the matched
+  prior, its confidence, and the blend ratio, with a warning when MEDIUM.
 - **Evidence Priors (read-only):** under *Data and Settings*, a panel lists the
   loaded public evidence-prior sources (name, type, weight, confidence) and
   counts, clearly marked *representative seed* and *not yet connected to
