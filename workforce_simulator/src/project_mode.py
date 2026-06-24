@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Tuple
 
 import exporter
 import optimizer
+import pareto
 import routing
 from config_loader import SimConfig
 from models import Task, Team, Worker
@@ -615,6 +616,14 @@ def run_project_simulation(
         _comparison_row(k, options[k], burdens[k]) for k in OPTION_LABELS
     ]
 
+    # Read-only Pareto-front preview over the same options/burdens. Computed
+    # last and added as two extra keys; it does not affect the recommendation,
+    # options, scoring, or routing above.
+    ordered_options = {k: options[k] for k in OPTION_LABELS}
+    pareto_preview = pareto.pareto_preview(
+        ordered_options, burdens, OPTION_LABELS, rec_key
+    )
+
     return {
         "project_name": request.get("project_name", ""),
         "project_goal": request.get("project_goal", ""),
@@ -624,4 +633,6 @@ def run_project_simulation(
         "comparison_table": comparison_table,
         "task_routing": routing_records,
         "routing_summary": routing_summary,
+        "pareto_front": pareto_preview["pareto_front"],
+        "pareto_explanation": pareto_preview["pareto_explanation"],
     }

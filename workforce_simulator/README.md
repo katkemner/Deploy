@@ -193,6 +193,33 @@ time by a fixed coverage→speed→cost→risk priority; task dependencies are
 respected only within the submitted task set; and cost efficiency is normalised
 across the generated team population for the run.
 
+#### Tradeoff view — Pareto-front preview (read-only)
+
+Alongside the single recommendation, `POST /simulate/project` returns a
+**Pareto-front preview** that marks which of the five staffing options are
+**non-dominated** across ten objectives — minimize *duration, cost, human hours,
+review hours, expected rework hours, risk*; maximize *skill coverage,
+productivity, workload balance, delivery confidence*.
+
+Option *A dominates* option *B* when A is at least as good as B on **every**
+objective and strictly better on **at least one**. An option is **Pareto-optimal**
+when nothing dominates it: you cannot improve any objective without sacrificing
+another. The response adds two keys:
+
+- `pareto_front` — one `ParetoOption` per staffing option: `option_id`,
+  `option_name`, `is_pareto_optimal`, `dominated_by`, `dominates`,
+  `tradeoff_summary`, `objective_values` (the ten values), `strengths`,
+  `weaknesses`.
+- `pareto_explanation` — a deterministic paragraph naming the frontier options
+  and noting the recommendation's place on it.
+
+This is **informational only**: it does not re-rank options, change the
+recommendation, or touch scoring/routing. If the recommended option happens to
+be dominated, the explanation (and the UI's **Tradeoff View** section) adds a
+warning — but the recommendation is left unchanged. The frontend renders the
+recommended option, the Pareto-optimal options and the tradeoff each represents
+(fastest, lowest cost, lowest risk, most balanced, …), and an objective matrix.
+
 ### Task-level human/AI routing
 
 Before scheduling, each task gets a deterministic **routing recommendation** for
