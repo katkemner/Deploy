@@ -7,6 +7,7 @@ import ProjectComparisonTable from './ProjectComparisonTable.jsx';
 import TaskScheduleTable from './TaskScheduleTable.jsx';
 import RoutingTable from './RoutingTable.jsx';
 import UncertaintyPanel from './UncertaintyPanel.jsx';
+import TradeoffView from './TradeoffView.jsx';
 
 // Objective dropdown: label shown to user -> key sent to the API.
 const OBJECTIVES = [
@@ -354,6 +355,12 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
               />
             ))}
           </div>
+
+          <TradeoffView
+            paretoFront={result.pareto_front}
+            paretoExplanation={result.pareto_explanation}
+            recommendedKey={recommendedKey}
+          />
 
           <h3 style={{ fontSize: 16, marginTop: 18 }}>
             Task Routing (human vs AI)
