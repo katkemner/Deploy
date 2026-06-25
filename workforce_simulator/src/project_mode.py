@@ -110,6 +110,7 @@ def build_ai_assisted_team(
     tasks: List[Task],
     require_full: bool,
     max_ai: int,
+    calibration: dict = None,
 ) -> Tuple[List[Worker], List[str]]:
     """Greedily add AI agents that improve the human team's outcome.
 
@@ -119,6 +120,9 @@ def build_ai_assisted_team(
     lower cost, then lower risk). It stops at ``max_ai`` agents or when no
     agent improves the outcome. Returns the chosen agents and a note per
     agent explaining why it was added.
+
+    ``calibration`` (optional) is threaded into the per-candidate simulations so
+    the greedy choice is consistent with the calibrated metrics shown elsewhere.
     """
     chosen: List[Worker] = []
     notes: List[str] = []
@@ -128,7 +132,9 @@ def build_ai_assisted_team(
     remaining = list(available_ai)
 
     def metrics(team_ai: List[Worker]) -> SimulationResult:
-        return simulate_team(Team(list(human_team), team_ai), tasks, require_full)
+        return simulate_team(
+            Team(list(human_team), team_ai), tasks, require_full, calibration
+        )
 
     def quality(r: SimulationResult) -> Tuple[float, float, float, float]:
         # Higher is better: coverage up, duration down, cost down, risk down.
@@ -489,6 +495,7 @@ def run_project_simulation(
     request: dict,
     config: SimConfig,
     prior_bindings: dict = None,
+    calibration: dict = None,
 ) -> dict:
     """Run the full Project Mode comparison and return the response payload.
 
@@ -498,6 +505,10 @@ def run_project_simulation(
     ``prior_bindings`` (optional) enables prior-backed routing scores when
     ``config.use_public_priors_for_scoring`` is true. When the flag is off (the
     default) the routing is computed exactly as before.
+
+    ``calibration`` (optional) is a dict of approved multipliers applied to every
+    option's simulation and to the task routing's review/rework estimates. When
+    ``None`` the comparison is computed exactly as before.
     """
     objective = request.get("optimization_objective", "balanced")
     if objective not in OBJECTIVES:
@@ -534,18 +545,23 @@ def run_project_simulation(
     current_ais = [ais_by[n] for n in current_ai_names]
 
     # 1. Current team exactly as selected.
-    current_res = simulate_team(Team(current_humans, current_ais), tasks, require_full)
+    current_res = simulate_team(
+        Team(current_humans, current_ais), tasks, require_full, calibration
+    )
 
     # 2. AI-assisted current team: the human team + greedily chosen agents.
     ai_added, ai_notes = build_ai_assisted_team(
-        current_humans, ai_agents, tasks, require_full, cfg.max_ai_agents_per_team
+        current_humans, ai_agents, tasks, require_full,
+        cfg.max_ai_agents_per_team, calibration,
     )
     assisted_res = simulate_team(
-        Team(current_humans, ai_added), tasks, require_full
+        Team(current_humans, ai_added), tasks, require_full, calibration
     )
 
     # 3. Whole population of valid team combinations.
-    all_results = optimizer.simulate_all_teams(employees, ai_agents, tasks, cfg)
+    all_results = optimizer.simulate_all_teams(
+        employees, ai_agents, tasks, cfg, calibration
+    )
 
     # Score everything together so totals/cost-efficiency are comparable.
     combined = all_results + [current_res, assisted_res]
@@ -581,7 +597,7 @@ def run_project_simulation(
     # Task-level routing (team-independent) + per-option review/rework burden.
     use_priors = bool(getattr(config, "use_public_priors_for_scoring", False))
     routing_records = routing.route_tasks(
-        tasks, bindings=prior_bindings, use_priors=use_priors
+        tasks, bindings=prior_bindings, use_priors=use_priors, calibration=calibration
     )
     routing_summary = routing.summarize_routing(routing_records)
     burdens = {k: _burden(options[k], routing_records) for k in OPTION_LABELS}

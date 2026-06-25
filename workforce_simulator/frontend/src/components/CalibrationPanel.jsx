@@ -43,6 +43,8 @@ export default function CalibrationPanel() {
   const [selected, setSelected] = useState(() => new Set());
   const [applyNotes, setApplyNotes] = useState('');
   const [applyMsg, setApplyMsg] = useState(null);
+  const [active, setActive] = useState(null);
+  const [toggleBusy, setToggleBusy] = useState(false);
 
   async function loadSummary() {
     try {
@@ -59,7 +61,31 @@ export default function CalibrationPanel() {
       /* best-effort */
     }
   }
-  useEffect(() => { loadSummary(); loadProposals(); }, []);
+  async function loadActive() {
+    try {
+      setActive(await api.getCalibrationActive());
+    } catch {
+      /* best-effort */
+    }
+  }
+  useEffect(() => { loadSummary(); loadProposals(); loadActive(); }, []);
+
+  // Flip the config's use_calibration_multipliers flag without touching the
+  // applied config itself, so the user can disable calibration and re-enable it.
+  async function setUseCalibration(enabled) {
+    setToggleBusy(true);
+    try {
+      const cfg = await api.getConfig();
+      delete cfg.weight_provenance;
+      cfg.use_calibration_multipliers = enabled;
+      await api.saveConfig(cfg);
+      await loadActive();
+    } catch (err) {
+      setApplyMsg({ type: 'error', text: err.message });
+    } finally {
+      setToggleBusy(false);
+    }
+  }
 
   function toggleSel(id) {
     setSelected((prev) => {
@@ -78,6 +104,7 @@ export default function CalibrationPanel() {
         text: `Applied ${res.applied_proposals.length}, skipped ${res.rejected_or_skipped_proposals.length}.` });
       setSelected(new Set());
       await loadProposals();
+      await loadActive();
     } catch (err) {
       setApplyMsg({ type: 'error', text: err.message });
     }
@@ -91,6 +118,7 @@ export default function CalibrationPanel() {
       setApplyMsg({ type: 'success', text: `Rejected ${res.rejected_proposals.length}.` });
       setSelected(new Set());
       await loadProposals();
+      await loadActive();
     } catch (err) {
       setApplyMsg({ type: 'error', text: err.message });
     }
@@ -131,6 +159,67 @@ export default function CalibrationPanel() {
       <div className="msg" style={{ background: '#eef2ff', color: '#4338ca', border: '1px solid var(--border)' }}>
         <strong>Calibration suggestions are not applied automatically.</strong>
       </div>
+
+      {active && (
+        <div style={{ marginTop: 14 }}>
+          <h3 style={{ fontSize: 15 }}>Approved calibration multipliers</h3>
+          <div className="msg" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}>
+            ⚠ {active.warning}
+          </div>
+          <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={!!active.calibration_multipliers_enabled}
+              disabled={toggleBusy}
+              onChange={(e) => setUseCalibration(e.target.checked)}
+            />
+            <span>Use approved calibration multipliers</span>
+          </label>
+          {!active.config_exists && (
+            <p className="section-hint">
+              No approved calibration multipliers yet — apply a proposal below to
+              create them. Until then, simulations are unaffected.
+            </p>
+          )}
+          {active.config_exists && (
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Multiplier</th>
+                    <th>Active value</th>
+                    <th>Source project</th>
+                    <th>Previous</th>
+                    <th>What it does</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(active.multipliers || {}).map(([name, value]) => {
+                    const prov = (active.calibration_provenance || [])
+                      .find((p) => p.multiplier_name === name);
+                    return (
+                      <tr key={name}>
+                        <td>{name.replace(/_/g, ' ')}</td>
+                        <td>{value}</td>
+                        <td>{prov ? prov.source_project_id : '—'}</td>
+                        <td>{prov ? prov.previous_value : '—'}</td>
+                        <td style={{ whiteSpace: 'normal', minWidth: 220 }}>
+                          {(active.descriptions || {})[name] || ''}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="section-hint">
+            {active.calibration_multipliers_enabled
+              ? 'Approved multipliers are currently applied to new simulations.'
+              : 'Approved multipliers are saved but NOT applied to simulations.'}
+          </p>
+        </div>
+      )}
 
       {/* Identity */}
       <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>

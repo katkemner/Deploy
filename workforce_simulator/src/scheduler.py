@@ -76,12 +76,37 @@ def _topological_order(assignments: List[Assignment]) -> List[Assignment]:
     return order
 
 
-def schedule(assignments: List[Assignment]) -> Dict[str, object]:
+def _effective_hours(a: Assignment, calibration: Optional[dict]) -> float:
+    """Scheduled duration for a task, after any calibration multipliers.
+
+    The worker still *consumes* ``assigned_hours`` (so cost and workload are
+    unchanged); only the time the task occupies on the schedule is scaled. With
+    ``calibration is None`` this returns ``assigned_hours`` unchanged, so the
+    schedule is byte-identical to the pre-calibration behaviour.
+    """
+    hours = a.assigned_hours
+    if not calibration:
+        return hours
+    hours *= calibration.get("task_duration_multiplier", 1.0)
+    # A dependency buffer only applies to tasks that wait on a predecessor.
+    if a.dependencies:
+        hours *= calibration.get("dependency_buffer_multiplier", 1.0)
+    return hours
+
+
+def schedule(
+    assignments: List[Assignment], calibration: Optional[dict] = None
+) -> Dict[str, object]:
     """Compute start/finish times, duration, and the critical path.
 
     Mutates each assignment in place to set ``start_time``, ``finish_time``,
     and ``is_on_critical_path``. Unassigned tasks (no worker, e.g. a missing
     skill) are left unscheduled.
+
+    ``calibration`` (optional) is a dict of approved multipliers; when given,
+    ``task_duration_multiplier`` and ``dependency_buffer_multiplier`` scale the
+    scheduled duration of each task. When ``None`` (the default) the schedule is
+    computed exactly as before.
 
     Returns a dict with ``duration`` (project finish time) and
     ``critical_path`` (an ordered list of task names).
@@ -117,7 +142,7 @@ def schedule(assignments: List[Assignment]) -> Dict[str, object]:
         resource_free = worker_free.get(worker, 0.0)
 
         start = max(dep_finish, resource_free)
-        finish = start + a.assigned_hours
+        finish = start + _effective_hours(a, calibration)
 
         a.start_time = start
         a.finish_time = finish

@@ -149,9 +149,18 @@ class SimulationResult:
 
 
 def simulate_team(
-    team: Team, tasks: List[Task], require_full_required_skill_coverage: bool = True
+    team: Team,
+    tasks: List[Task],
+    require_full_required_skill_coverage: bool = True,
+    calibration: Dict[str, float] = None,
 ) -> SimulationResult:
-    """Assign + schedule ``team`` and compute every per-team metric."""
+    """Assign + schedule ``team`` and compute every per-team metric.
+
+    ``calibration`` (optional) is a dict of approved calibration multipliers.
+    When supplied it scales the schedule (via the scheduler) and adds the
+    skill-gap / context-switching penalties to the risk score. When ``None``
+    (the default) every metric is computed exactly as before.
+    """
     members = team.members
     assignments = assign_tasks(team, tasks)
 
@@ -184,7 +193,7 @@ def simulate_team(
     )
 
     # --- schedule (duration + critical path) -------------------------------
-    sched = scheduler.schedule(assignments)
+    sched = scheduler.schedule(assignments, calibration)
     estimated_duration = sched["duration"]
     critical_path = sched["critical_path"]
 
@@ -224,6 +233,18 @@ def simulate_team(
     missing_fraction = (len(tasks) - covered) / len(tasks) if tasks else 0.0
     overload_fraction = len(overloaded_members) / len(members) if members else 0.0
     risk = scoring.risk_score(missing_fraction, overload_fraction, balance, coverage)
+    # Approved calibration penalties raise risk for the patterns the user's
+    # historical actuals showed we under-modelled: uncovered required skills and
+    # member overload (a context-switching proxy). Neutral defaults (0.0) and a
+    # missing config leave risk untouched.
+    if calibration:
+        risk += (
+            calibration.get("skill_gap_penalty", 0.0) * 100.0 * missing_required_fraction
+        )
+        risk += (
+            calibration.get("context_switching_penalty", 0.0) * 100.0 * overload_fraction
+        )
+        risk = max(0.0, min(100.0, risk))
     total_missing = len(missing_required_skills) + len(missing_optional_skills)
     confidence = scoring.confidence_score(coverage, total_missing, data_complete=True)
     estimated_cost = _estimate_cost(assignments, members)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
 
 
 # Default weights (relative; normalised at load time).
@@ -38,6 +38,11 @@ class SimConfig:
     max_ai_agents_per_team: int = 2
     # Opt-in: when true, matched public priors may supply/blend routing scores.
     use_public_priors_for_scoring: bool = False
+    # Tri-state: whether the engine consumes approved calibration multipliers.
+    #   None  -> default: enabled iff an applied calibration config file exists.
+    #   True  -> consume them (still neutral if no config exists).
+    #   False -> ignore them, without deleting the applied config.
+    use_calibration_multipliers: Optional[bool] = None
 
 
 def _normalise(weights: Dict[str, float]) -> Dict[str, float]:
@@ -68,6 +73,13 @@ def load_config(path: str) -> SimConfig:
         max_ai_agents_per_team=int(raw.get("max_ai_agents_per_team", 2)),
         use_public_priors_for_scoring=bool(
             raw.get("use_public_priors_for_scoring", False)
+        ),
+        # Tri-state: preserve None (key absent / explicit null) so the API can
+        # default it to "enabled iff an applied config exists".
+        use_calibration_multipliers=(
+            None
+            if raw.get("use_calibration_multipliers") is None
+            else bool(raw.get("use_calibration_multipliers"))
         ),
     )
 
