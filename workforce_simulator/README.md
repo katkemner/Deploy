@@ -99,7 +99,8 @@ see *Install & run* below):
 5. **Open a task routing Why? panel** — expand any routing row to see each 1–5
    score's source and the routing rationale.
 6. **Review uncertainty** — run the Monte Carlo panel for P10/P50/P90 duration &
-   cost and the deadline/budget probabilities.
+   cost. The deadline/budget probabilities also appear when those targets are set
+   (the sample pre-fills them; clear a field to omit it).
 7. **Review the Pareto Tradeoff View** — see which options are on the frontier
    and what tradeoff each represents.
 8. **Review priors and calibration settings** — open *Data and Settings*: the

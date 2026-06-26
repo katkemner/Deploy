@@ -135,8 +135,10 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
   const [projectGoal, setProjectGoal] = useState(
     'Staff and deliver the MVP with the right mix of people and AI agents.'
   );
-  const [deadlineHours, setDeadlineHours] = useState('');
-  const [budget, setBudget] = useState('');
+  // Pre-filled in the sample so the demo shows deadline/budget probabilities in
+  // the Monte Carlo panel and the recommendation. Clear either field to omit it.
+  const [deadlineHours, setDeadlineHours] = useState('120');
+  const [budget, setBudget] = useState('20000');
   const [maxTeamSize, setMaxTeamSize] = useState(5);
   const [maxAi, setMaxAi] = useState(2);
   const [objective, setObjective] = useState('balanced');
