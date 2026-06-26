@@ -23,6 +23,7 @@ import prior_matching
 import priors
 import project_mode
 import routing
+import workbank
 from models import Team
 
 from .schemas import (
@@ -58,6 +59,8 @@ EMPLOYEES_CSV = os.path.join(DATA_DIR, "employees.csv")
 AI_AGENTS_CSV = os.path.join(DATA_DIR, "ai_agents.csv")
 TASKS_CSV = os.path.join(DATA_DIR, "project_tasks.csv")
 PRIORS_PATH = os.path.join(DATA_DIR, "priors", "public_priors_seed.json")
+WORKBANK_IMPORT_DIR = os.path.join(DATA_DIR, "imports", "workbank")
+WORKBANK_NORMALIZED = os.path.join(DATA_DIR, "priors", "workbank_normalized.json")
 CALIBRATION_STORE = os.path.join(DATA_DIR, "calibration", "actuals.json")
 CALIBRATION_CONFIG = os.path.join(DATA_DIR, "calibration", "applied_config.json")
 CALIBRATION_STATE = os.path.join(DATA_DIR, "calibration", "proposal_state.json")
@@ -236,6 +239,20 @@ def match_tasks(request: MatchTasksRequest) -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
     task_dicts = [t.model_dump() for t in request.tasks]
     return {"matches": prior_matching.match_tasks(task_dicts, bundle)}
+
+
+@router.get("/priors/workbank", tags=["data"])
+def get_workbank_priors() -> dict:
+    """Return the read-only normalized WORKBank import status + data.
+
+    Imports the three WORKBank CSVs from ``data/imports/workbank/`` when present
+    (writing ``data/priors/workbank_normalized.json``), else falls back to a
+    previously imported file, else reports ``not_imported``. The normalized
+    WORKBank data is **NOT connected to routing, scoring, or any simulation** -
+    it is exposed here read-only. Returns ``import_status``, ``task_count``,
+    ``occupation_count``, ``normalized_priors``, and ``validation_warnings``.
+    """
+    return workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
 
 
 # ---------------------------------------------------------------------------

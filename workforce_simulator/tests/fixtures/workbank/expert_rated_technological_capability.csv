@@ -1,0 +1,4 @@
+task_id,expert_ai_capability,expert_feasible_has
+WB-1,0.9,0.5
+WB-1,0.7,0.3
+WB-2,0.4,0.7

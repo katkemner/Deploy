@@ -92,6 +92,7 @@ export const api = {
   getAIAgents: () => request('/ai-agents'),
   getTasks: () => request('/tasks'),
   getPriors: () => request('/priors'),
+  getWorkbankPriors: () => request('/priors/workbank'),
   matchTasks: (tasks) => jsonPost('/priors/match-tasks', { tasks }),
   runSimulation: () => request('/simulate', { method: 'POST' }),
   runManualTeam: (humanNames, aiAgentNames) =>
