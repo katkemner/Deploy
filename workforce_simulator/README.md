@@ -203,6 +203,13 @@ Open **http://localhost:5173**. The dashboard now leads with **Project Mode**
 and full team-ranking simulation are tucked under a collapsible **Data and
 Settings** section. See [`frontend/README.md`](frontend/README.md) for details.
 
+### Deploy to staging
+
+To put this MVP on a shared **staging** URL (FastAPI backend + Vite static
+frontend on Render), see **[`docs/deployment.md`](docs/deployment.md)** for
+exact, step-by-step setup. ⚠️ Staging is a demo only — no auth, database, or
+tenant isolation, so do not enter sensitive company data.
+
 ### Project Mode (the primary flow)
 
 Project Mode reframes the app around a single question: *“Given this project,

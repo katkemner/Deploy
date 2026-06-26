@@ -16,6 +16,8 @@ work happens in the engine modules under ``src/``.
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,10 +34,26 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Permissive CORS so a future local frontend (any port) can call the API.
+
+def _cors_origins() -> list[str]:
+    """Allowed CORS origins, from ``CORS_ALLOW_ORIGINS`` (comma-separated).
+
+    Defaults to ``["*"]`` when the variable is unset or blank, which preserves
+    the original permissive local-dev behaviour. In staging/production set it to
+    the deployed frontend origin(s), e.g.
+    ``CORS_ALLOW_ORIGINS=https://workforce-simulator-web.onrender.com``.
+    """
+    raw = os.environ.get("CORS_ALLOW_ORIGINS", "").strip()
+    if not raw:
+        return ["*"]
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+# CORS so the frontend (local on any port, or the deployed static site) can call
+# the API. Origins are configurable by environment variable; default is "*".
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
