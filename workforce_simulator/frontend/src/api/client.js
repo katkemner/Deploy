@@ -6,8 +6,13 @@
 // team names), or a validation array (422). `extractError` flattens all of
 // those into one readable message.
 
+// API base URL. In deployment set VITE_API_BASE_URL to the backend's URL at
+// build time. VITE_API_BASE is still accepted for backward compatibility, and
+// both fall back to the local dev backend so `npm run dev` works unchanged.
 export const API_BASE =
-  import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_BASE ||
+  'http://127.0.0.1:8000';
 
 function extractError(status, body) {
   const detail = body && body.detail !== undefined ? body.detail : body;
