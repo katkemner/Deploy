@@ -212,7 +212,13 @@ function WhyPanel({ row }) {
 
 export default function RoutingTable({ routing, summary }) {
   const [expanded, setExpanded] = useState(() => new Set());
-  if (!routing || routing.length === 0) return null;
+  if (!routing || routing.length === 0) {
+    return (
+      <p className="section-hint">
+        No task routing yet — add at least one task and run the simulation.
+      </p>
+    );
+  }
 
   function toggle(task) {
     setExpanded((prev) => {
@@ -245,6 +251,13 @@ export default function RoutingTable({ routing, summary }) {
           <strong>Net: {summary.net_ai_time_saved}h</strong>
         </div>
       )}
+      <p className="section-hint">
+        Each row is one task. The nine middle columns are 1–5 suitability scores
+        that drive the routing decision. <strong>Review h</strong> = human hours
+        to review AI output; <strong>Rework h</strong> = expected hours fixing AI
+        mistakes; <strong>AI saved h</strong> = raw AI time saved before review +
+        rework. Click <strong>Why?</strong> for the source of every number.
+      </p>
       <div className="table-scroll">
         <table className="table">
           <thead>

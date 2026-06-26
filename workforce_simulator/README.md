@@ -34,6 +34,88 @@ tasks, the simulator:
 
 ---
 
+## MVP walkthrough (read this first)
+
+The **Workforce Simulator** helps a manager answer one question: *given this
+project, which mix of people and AI agents should I use, and what outcome should
+I expect?* Everything is **deterministic** — the same inputs always produce the
+same output, and no LLM is used to invent numbers.
+
+The primary flow is **Project Mode**. You describe a project (tasks, your current
+team, an objective), run a simulation, and get five staffing options with a
+recommendation, a human-vs-AI routing plan per task, an uncertainty analysis, and
+a tradeoff view.
+
+**The five staffing options:**
+
+| Option | What it means |
+|---|---|
+| **Current Team** | Exactly the people + AI agents you selected (your baseline). |
+| **AI-Assisted Current Team** | Your humans plus AI agents the engine adds where they improve coverage, speed, cost, or risk. |
+| **Recommended Balanced Team** | The valid team with the best overall weighted score. |
+| **Fastest Valid Team** | The valid team with the shortest estimated duration. |
+| **Lowest-Cost Valid Team** | The cheapest valid team. |
+
+A team is **valid** when it covers every required skill.
+
+**Task routing** splits each task between humans and AI (AI_ONLY,
+AI_FIRST_HUMAN_REVIEW, HUMAN_FIRST_AI_ASSIST, HUMAN_ONLY, or ESCALATE). From that
+split it estimates **review hours** (human time checking AI output), **rework
+hours** (expected time fixing AI mistakes), and **net AI time saved** (AI time
+saved minus review + rework). Each routing number is traceable in a **Why?**
+panel.
+
+**Three optional scoring data sources** (all off by default, all independent):
+
+- **Public priors** — built-in *representative seed* values (illustrative, not
+  exact published figures). Toggle: *Use public priors for scoring*.
+- **WORKBank priors** — your own *imported, normalized* WORKBank data. Toggle:
+  *Use WORKBank for scoring*. Takes precedence over public priors.
+- **Calibration multipliers** — adjustments derived from *your approved
+  historical calibration*. Toggle: *Use approved calibration multipliers* (in the
+  Calibration panel).
+
+When all three are off, scoring uses only your manual inputs and the built-in
+skill heuristics. Each one, when enabled, **can change the recommendation** — and
+every affected number is labelled with its source (manual / public prior /
+WORKBank / heuristic / fallback / calibration).
+
+The **Pareto Tradeoff View** marks which staffing options are *non-dominated*
+(no other option beats them on every objective at once). It is read-only context
+and never changes the recommendation.
+
+### Demo script
+
+A ~5-minute click-through for a manual demo (start the API + frontend first —
+see *Install & run* below):
+
+1. **Open Project Mode** — the dashboard leads with it.
+2. **Review the sample project** — 10 preloaded tasks and a suggested current
+   team. Click *Fill current best team* to populate humans + AI agents.
+3. **Run simulation** — click *Run Project Simulation*.
+4. **Compare staffing options** — read the recommendation summary, then the
+   five option cards and the comparison table (cost, duration, review/rework,
+   reviewer bottleneck).
+5. **Open a task routing Why? panel** — expand any routing row to see each 1–5
+   score's source and the routing rationale.
+6. **Review uncertainty** — run the Monte Carlo panel for P10/P50/P90 duration &
+   cost and the deadline/budget probabilities.
+7. **Review the Pareto Tradeoff View** — see which options are on the frontier
+   and what tradeoff each represents.
+8. **Review priors and calibration settings** — open *Data and Settings*: the
+   three scoring toggles (all off by default), the Evidence Priors panel
+   (including WORKBank import status), and the Calibration panel.
+
+### Intentionally NOT built yet
+
+This MVP focuses on the deterministic simulation core. It deliberately does
+**not** include: authentication / user accounts, a database (data lives in local
+CSV/JSON files), deployment / hosting config, payments, or an LLM-based project
+brief parser. Scoring is entirely formula-driven; the optional data sources above
+only ground the existing scores, they do not call any external service.
+
+---
+
 ## Project structure
 
 ```
