@@ -130,4 +130,8 @@ export const api = {
   uploadAIAgents: (file) => uploadFile('/upload/ai-agents', file),
   uploadTasks: (file) => uploadFile('/upload/tasks', file),
   getLatestOutputs: () => request('/outputs/latest'),
+  // Brief upload: deterministic text extraction, then (after the user
+  // confirms) AI drafting of editable tasks. Two separate calls by design.
+  extractBriefText: (file) => uploadFile('/projects/extract-brief-text', file),
+  parseBrief: (text) => jsonPost('/projects/parse-brief', { text }),
 };

@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Backend (FastAPI :8000)",
+      "type": "shell",
+      "command": "uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload",
+      "options": {
+        "cwd": "${workspaceFolder}/workforce_simulator"
+      },
+      "isBackground": true,
+      "presentation": {
+        "group": "servers",
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend (Vite :5173)",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/workforce_simulator/frontend"
+      },
+      "isBackground": true,
+      "presentation": {
+        "group": "servers",
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run app (backend + frontend)",
+      "dependsOn": [
+        "Backend (FastAPI :8000)",
+        "Frontend (Vite :5173)"
+      ],
+      "dependsOrder": "parallel",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -27,6 +27,15 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
+      # OPTIONAL secret: enables AI task drafting from an uploaded brief
+      # (POST /projects/parse-brief). `sync: false` means Render prompts for the
+      # value in the dashboard and stores it as a secret — it is never committed
+      # to the repo. Leave it unset and the brief-upload feature degrades
+      # gracefully (the endpoint returns 503); the rest of the app is unaffected.
+      # Privacy: brief text is sent to Anthropic — don't upload sensitive data
+      # on staging.
+      - key: ANTHROPIC_API_KEY
+        sync: false
       # OPTIONAL: comma-separated list of allowed browser origins for CORS.
       # Leave it unset for staging — the code then defaults to "*", which lets
       # the frontend (any URL) call the API with no manual setup. To lock the

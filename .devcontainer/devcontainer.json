@@ -1,0 +1,35 @@
+{
+  "name": "Workforce Simulator",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  // Install backend (pip) and frontend (npm) dependencies once on create.
+  "postCreateCommand": "pip install -r workforce_simulator/requirements.txt && cd workforce_simulator/frontend && npm install",
+  // The frontend calls same-origin /api/* paths; Vite proxies them to the
+  // backend (see workforce_simulator/frontend/vite.config.js).
+  "containerEnv": {
+    "VITE_API_BASE": "/api"
+  },
+  "forwardPorts": [5173, 8000],
+  "portsAttributes": {
+    "5173": {
+      "label": "Frontend (Vite)",
+      "onAutoForward": "openPreview"
+    },
+    "8000": {
+      "label": "Backend API (FastAPI)",
+      "onAutoForward": "silent"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  }
+}

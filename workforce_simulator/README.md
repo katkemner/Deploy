@@ -111,9 +111,12 @@ see *Install & run* below):
 
 This MVP focuses on the deterministic simulation core. It deliberately does
 **not** include: authentication / user accounts, a database (data lives in local
-CSV/JSON files), deployment / hosting config, payments, or an LLM-based project
-brief parser. Scoring is entirely formula-driven; the optional data sources above
-only ground the existing scores, they do not call any external service.
+CSV/JSON files), or payments. **Scoring is entirely formula-driven and never
+calls an LLM.** The one optional AI feature is an *input-assist* layer: uploading
+a project brief can draft editable tasks for you (see
+[AI-assisted task drafting](#ai-assisted-task-drafting-from-a-brief-optional)).
+It only fills the editable task list — it never scores, routes, schedules, or
+runs the engine, and it's off unless an Anthropic API key is configured.
 
 ---
 
@@ -146,6 +149,8 @@ workforce_simulator/
 │       ├── __init__.py        # sets up imports
 │       ├── app.py             # FastAPI app (uvicorn entry point)
 │       ├── routes.py          # endpoints, delegating to the engine
+│       ├── brief_extract.py   # deterministic .docx/.pdf text extraction (no LLM)
+│       ├── brief_parser.py    # LLM input-assist: brief text -> draft tasks
 │       └── schemas.py         # Pydantic request/response models
 ├── outputs/
 │   ├── results.json           # full results (generated)
@@ -233,7 +238,8 @@ project and their current team, then compares **staffing options**.
    balance, or Lowest risk).
 2. Edit the **Project Task Builder** — it preloads the 10 sample tasks; add,
    edit, or delete tasks and pick dependencies from existing task names. No CSV
-   editing required.
+   editing required. *(Optional shortcut: upload a brief to draft tasks — see
+   [AI-assisted task drafting](#ai-assisted-task-drafting-from-a-brief-optional).)*
 3. Select your **Current Team** (humans + AI agents). A live required-skill
    coverage preview shows gaps before you simulate.
 4. Click **Run Project Simulation**.
@@ -254,6 +260,42 @@ main bottleneck, the critical path, the biggest risk, and a concrete *what to
 change next* (e.g. “add a React-capable person”, “extend the deadline or move
 Frontend build off Alex”, “add the recommended AI agents”). A team is
 “**valid**” when it covers every required skill.
+
+#### AI-assisted task drafting (from a brief, optional)
+
+Typing every task by hand is the main friction in Project Mode. The **Start from
+a project brief** panel removes it: upload a Word `.docx` or text-based PDF, and
+Claude drafts editable tasks you review before anything runs. This is an
+*input-assist* layer only — **the LLM never scores, routes, schedules,
+optimises, or runs the engine**, which stays fully deterministic and auditable.
+
+The flow is deliberately two-step and human-gated:
+
+1. **Upload** a `.docx` or text-based PDF.
+2. The backend **extracts the text deterministically** (`python-docx` / `pypdf`,
+   no OCR) and shows a **preview** — `POST /projects/extract-brief-text`. No file
+   is persisted; only in-memory text is processed.
+3. After a **staging privacy warning**, you explicitly click **Generate draft
+   tasks with AI** — `POST /projects/parse-brief` sends only the confirmed text
+   to Claude (`claude-opus-4-8`) via the Anthropic SDK's structured-output
+   `messages.parse()`.
+4. Claude returns **draft tasks**. `required_skill` is constrained to the team's
+   real skill vocabulary (employee skills + AI-agent capabilities, injected into
+   the prompt); anything outside it — or any AI-estimated effort — is **flagged
+   for review**. Reconciliation is re-checked in code, so an invented skill can't
+   slip through even if the model ignores the instruction.
+5. You **review and edit** the drafts, click **Use these tasks**, and they load
+   into the normal Project Task Builder. From there the existing simulation runs
+   unchanged.
+
+Setup is one optional env var, `ANTHROPIC_API_KEY` (see
+[deployment](docs/deployment.md#enabling-ai-task-drafting-optional)). If it's not
+set, the drafting step returns a clear `503` and **manual entry keeps working** —
+the feature is purely additive. v1 supports `.docx` and text-based PDFs only (no
+OCR for scanned PDFs), and uploaded files are never stored.
+
+> ⚠️ With a key set, the extracted brief text is sent to Anthropic. On the
+> staging demo, **do not upload sensitive company data.**
 
 #### How `POST /simulate/project` works
 
