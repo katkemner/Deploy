@@ -26,9 +26,12 @@ A [`render.yaml`](../../render.yaml) Blueprint at the repository root declares
 both services. You can deploy via the Blueprint (recommended) or create each
 service manually.
 
-The frontend is **auto-wired** to the backend: `render.yaml` tells Render to fill
-the frontend's `VITE_API_BASE_URL` with the backend service's address
-automatically, so there is **nothing to copy/paste**.
+The frontend is **preconfigured** with the backend's public URL: `render.yaml`
+sets the frontend's `VITE_API_BASE_URL` to
+`https://workforce-simulator-api.onrender.com` (the default backend service
+name), so there is **nothing to copy/paste**. If you rename the backend service
+or add a custom domain, update that value in `render.yaml` (or in the dashboard)
+and redeploy the frontend.
 
 ---
 
@@ -82,7 +85,7 @@ When it finishes, open the **workforce-simulator-web** URL Render shows you.
 
 | Service | Variable | Set by | Purpose |
 |---|---|---|---|
-| Frontend | `VITE_API_BASE_URL` | **Auto** (Blueprint `fromService`) | Backend address, baked into the build. Render fills this with the backend's hostname automatically — nothing to do. A bare hostname is treated as `https://`. |
+| Frontend | `VITE_API_BASE_URL` | Blueprint (preset value) | Backend's public URL, baked into the build. Preset in `render.yaml` to `https://workforce-simulator-api.onrender.com`. Update only if you rename the backend or add a custom domain. A bare hostname is treated as `https://`. |
 | Backend | `PYTHON_VERSION` | Blueprint (`3.11.9`) | Python version Render builds with. |
 | Backend | `CORS_ALLOW_ORIGINS` | **Optional**, you (later) | Comma-separated browser origins allowed to call the API. Unset → `*` (works for staging). Set to the frontend URL to lock down; a bare hostname is accepted. |
 
