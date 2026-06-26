@@ -94,6 +94,7 @@ export const api = {
   getPriors: () => request('/priors'),
   getWorkbankPriors: () => request('/priors/workbank'),
   matchTasks: (tasks) => jsonPost('/priors/match-tasks', { tasks }),
+  matchWorkbankTasks: (tasks) => jsonPost('/priors/workbank/match-tasks', { tasks }),
   runSimulation: () => request('/simulate', { method: 'POST' }),
   runManualTeam: (humanNames, aiAgentNames) =>
     jsonPost('/simulate/manual-team', {

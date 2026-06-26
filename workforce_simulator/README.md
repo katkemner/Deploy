@@ -378,6 +378,26 @@ yet connected to scoring."* **The normalized WORKBank data is NOT used by
 routing, scoring, prior-backed scoring, calibration, Monte Carlo, or Project
 Mode — it changes no simulation behaviour.**
 
+#### WORKBank matching preview (preview only)
+
+`src/workbank_matching.py` deterministically matches each project task to its
+closest **imported WORKBank task**, reusing the same normalisation/similarity
+primitives and confidence thresholds as the public-prior matcher (HIGH ≥ 0.70,
+MEDIUM ≥ 0.45, else LOW). It blends a primary text score (token Jaccard +
+`difflib` over the project task's descriptive text vs the WORKBank `task_text`)
+with deterministic task-type and skill/occupation bonuses into one score.
+
+`POST /priors/workbank/match-tasks` returns one `WorkbankTaskMatch` per task
+(`project_task_id`, `project_task_name`, `matched_workbank_task_id`,
+`matched_task_text`, `matched_occupation_title`, `matched_task_type`,
+`match_score`, `match_confidence`, `match_method`, `explanation`, and up to three
+`candidate_matches`). `POST /simulate/project` additionally annotates each
+`task_routing` row with a read-only `workbank_match_preview`, shown in the
+Project Mode routing **Why?** panel under *"Preview only. Not yet used for
+scoring."* **The match is informational — it does NOT affect routing, scoring,
+review/rework, calibration, Pareto, Monte Carlo, the optimizer, or any
+recommendation.**
+
 #### Prior matching preview (preview only)
 
 `src/prior_matching.py` deterministically matches each project task to its
@@ -538,6 +558,7 @@ source weights, public prior values, or the routing decision rules.
 | `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
 | `GET /priors` | Loaded public evidence priors (representative seed; not yet wired to routing) |
 | `GET /priors/workbank` | Read-only normalized WORKBank import status + data (not connected to scoring) |
+| `POST /priors/workbank/match-tasks` | Closest WORKBank task per project task (preview only; not used for scoring) |
 | `POST /priors/match-tasks` | Closest-prior match per task (preview only; not used for scoring) |
 | `POST /calibration/actuals` | Store a completed project's actuals + return the comparison |
 | `POST /calibration/compare` | Compare actuals to predictions without storing |

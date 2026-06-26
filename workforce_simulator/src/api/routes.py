@@ -24,6 +24,7 @@ import priors
 import project_mode
 import routing
 import workbank
+import workbank_matching
 from models import Team
 
 from .schemas import (
@@ -255,6 +256,23 @@ def get_workbank_priors() -> dict:
     return workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
 
 
+@router.post("/priors/workbank/match-tasks", tags=["data"])
+def match_workbank_tasks(request: MatchTasksRequest) -> dict:
+    """Match each project task to its closest imported WORKBank task (PREVIEW).
+
+    Returns one ``WorkbankTaskMatch`` per task (with up to three candidate
+    matches). This is informational - the match is NOT used by routing,
+    scoring, calibration, Pareto, Monte Carlo, or any recommendation. When no
+    WORKBank data has been imported, each task reports a LOW, unmatched result.
+    """
+    normalized = workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
+    task_dicts = [t.model_dump() for t in request.tasks]
+    return {
+        "import_status": normalized.get("import_status"),
+        "matches": workbank_matching.match_tasks(task_dicts, normalized),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Calibration (historical actuals vs predictions) - informational only
 # ---------------------------------------------------------------------------
@@ -445,9 +463,38 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
     # any routing/scoring/recommendation produced above - it only annotates the
     # task_routing records with the closest matching prior.
     _attach_prior_match_preview(response, [t.model_dump() for t in request.tasks])
+    # Additive, informational-only WORKBank match preview (read-only; never used
+    # for routing/scoring/recommendations).
+    _attach_workbank_match_preview(response, [t.model_dump() for t in request.tasks])
     # Surface which approved calibration multipliers shaped this run (if any).
     response.update(active["response"])
     return response
+
+
+def _attach_workbank_match_preview(response: dict, task_dicts: list) -> None:
+    """Add a read-only ``workbank_match_preview`` to each task_routing row.
+
+    Best-effort and side-effect free with respect to the simulation: the match
+    is informational and changes no routing/scoring/recommendation. When no
+    WORKBank data is imported, each row's preview reports an unmatched, LOW
+    result rather than failing.
+    """
+    normalized = workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
+    matches = workbank_matching.match_tasks(task_dicts, normalized)
+    by_task = {m["project_task_id"]: m for m in matches}
+    for row in response.get("task_routing", []):
+        m = by_task.get(row.get("task"))
+        if m is None:
+            continue
+        row["workbank_match_preview"] = {
+            "matched_workbank_task_id": m["matched_workbank_task_id"],
+            "matched_task_text": m["matched_task_text"],
+            "matched_occupation_title": m["matched_occupation_title"],
+            "matched_task_type": m["matched_task_type"],
+            "match_score": m["match_score"],
+            "match_confidence": m["match_confidence"],
+            "explanation": m["explanation"],
+        }
 
 
 def _attach_prior_match_preview(response: dict, task_dicts: list) -> None:
