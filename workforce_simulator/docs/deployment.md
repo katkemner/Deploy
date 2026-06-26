@@ -26,21 +26,29 @@ A [`render.yaml`](../../render.yaml) Blueprint at the repository root declares
 both services. You can deploy via the Blueprint (recommended) or create each
 service manually.
 
+The frontend is **auto-wired** to the backend: `render.yaml` tells Render to fill
+the frontend's `VITE_API_BASE_URL` with the backend service's address
+automatically, so there is **nothing to copy/paste**.
+
 ---
 
-## Option A — Deploy with the Blueprint (recommended)
+## Option A — One-click Blueprint (recommended)
 
-1. Push this repository to GitHub (already done if you're reading this on
-   GitHub).
-2. In the Render dashboard: **New → Blueprint**, and select this repository.
-   Render reads `render.yaml` and proposes the two services.
-3. Click **Apply**. Render creates `workforce-simulator-api` and
-   `workforce-simulator-web`.
-4. Set the two environment variables that are intentionally left blank (see
-   [Environment variables](#environment-variables) below), then trigger a
-   redeploy of each service so the values take effect.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/katkemner/Deploy)
 
-That's it — Render builds and starts both services.
+1. Click the **Deploy to Render** button above (or, in the Render dashboard:
+   **New → Blueprint**, then select this repository).
+2. Sign in / sign up for Render and authorize access to the repository if asked.
+3. Render reads `render.yaml` and shows the two services. Click **Apply**.
+4. Wait ~5 minutes for both to build and go live. Done — the frontend already
+   knows the backend's URL, and CORS defaults to permissive for staging, so
+   there's nothing else to set.
+
+When it finishes, open the **workforce-simulator-web** URL Render shows you.
+
+> Lock-down (optional, later): to restrict the API to only the frontend, add a
+> `CORS_ALLOW_ORIGINS` variable on the backend set to the frontend's URL, then
+> redeploy. Not needed for a staging demo.
 
 ---
 
@@ -72,22 +80,21 @@ That's it — Render builds and starts both services.
 
 ## Environment variables
 
-| Service | Variable | Example | Purpose |
+| Service | Variable | Set by | Purpose |
 |---|---|---|---|
-| Backend | `CORS_ALLOW_ORIGINS` | `https://workforce-simulator-web.onrender.com` | Comma-separated list of browser origins allowed to call the API. Unset → `*` (local-dev default). |
-| Backend | `PYTHON_VERSION` | `3.11.9` | Python version Render builds with. |
-| Frontend | `VITE_API_BASE_URL` | `https://workforce-simulator-api.onrender.com` | Backend base URL, baked into the build. |
+| Frontend | `VITE_API_BASE_URL` | **Auto** (Blueprint `fromService`) | Backend address, baked into the build. Render fills this with the backend's hostname automatically — nothing to do. A bare hostname is treated as `https://`. |
+| Backend | `PYTHON_VERSION` | Blueprint (`3.11.9`) | Python version Render builds with. |
+| Backend | `CORS_ALLOW_ORIGINS` | **Optional**, you (later) | Comma-separated browser origins allowed to call the API. Unset → `*` (works for staging). Set to the frontend URL to lock down; a bare hostname is accepted. |
 
-**Order of operations (because each service needs the other's URL):**
+With the Blueprint, **no environment variables need to be entered by hand** for a
+staging deploy — the frontend↔backend wiring is automatic and CORS defaults to
+permissive. The only optional step is restricting CORS later (above).
 
-1. Deploy both services once (with the variables blank). Render assigns each a
-   URL like `https://<name>.onrender.com`.
-2. Set `VITE_API_BASE_URL` on the frontend to the backend's URL, and
-   `CORS_ALLOW_ORIGINS` on the backend to the frontend's URL.
-3. Redeploy both services so the new values take effect (the frontend value is
-   compiled in at build time, so a rebuild is required).
+If you create the services manually (Option B) instead of using the Blueprint,
+set `VITE_API_BASE_URL` on the frontend to the backend's URL yourself, then
+redeploy the frontend (the value is compiled in at build time).
 
-For multiple allowed origins, comma-separate them:
+For multiple allowed CORS origins, comma-separate them:
 `CORS_ALLOW_ORIGINS=https://app.example.com,https://staging.example.com`.
 
 ---

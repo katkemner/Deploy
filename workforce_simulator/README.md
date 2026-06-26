@@ -205,10 +205,16 @@ Settings** section. See [`frontend/README.md`](frontend/README.md) for details.
 
 ### Deploy to staging
 
-To put this MVP on a shared **staging** URL (FastAPI backend + Vite static
-frontend on Render), see **[`docs/deployment.md`](docs/deployment.md)** for
-exact, step-by-step setup. ⚠️ Staging is a demo only — no auth, database, or
-tenant isolation, so do not enter sensitive company data.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/katkemner/Deploy)
+
+One-click staging deploy on Render (FastAPI backend + Vite static frontend).
+Click the button, sign in to Render, and click **Apply** — the two services are
+declared in [`render.yaml`](../render.yaml) and the frontend is auto-wired to the
+backend's URL, so there's nothing to copy/paste. Full step-by-step instructions
+(and a manual option) are in **[`docs/deployment.md`](docs/deployment.md)**.
+
+⚠️ Staging is a demo only — no auth, database, or tenant isolation, so do not
+enter sensitive company data.
 
 ### Project Mode (the primary flow)
 

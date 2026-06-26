@@ -6,11 +6,20 @@
 // team names), or a validation array (422). `extractError` flattens all of
 // those into one readable message.
 
-// API base URL. In deployment set VITE_API_BASE_URL to the backend's URL at
-// build time. VITE_API_BASE is still accepted for backward compatibility, and
-// both fall back to the local dev backend so `npm run dev` works unchanged.
+// Normalize a configured API base: a bare hostname (e.g. what Render's
+// `fromService` injects) is treated as https://; a full URL is used as-is.
+// Empty/undefined passes through so the fallback chain below applies.
+function normalizeBase(value) {
+  if (!value) return value;
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+// API base URL. In deployment set VITE_API_BASE_URL to the backend's URL (or
+// bare hostname) at build time. VITE_API_BASE is still accepted for backward
+// compatibility, and both fall back to the local dev backend so `npm run dev`
+// works unchanged.
 export const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ||
+  normalizeBase(import.meta.env.VITE_API_BASE_URL) ||
   import.meta.env.VITE_API_BASE ||
   'http://127.0.0.1:8000';
 

@@ -27,12 +27,13 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
-      # Comma-separated list of allowed browser origins for CORS. Set this to
-      # the static site's URL after its first deploy (e.g.
-      # https://workforce-simulator-web.onrender.com). Defaults to "*" in code
-      # if unset, which keeps local development working.
-      - key: CORS_ALLOW_ORIGINS
-        sync: false
+      # OPTIONAL: comma-separated list of allowed browser origins for CORS.
+      # Leave it unset for staging — the code then defaults to "*", which lets
+      # the frontend (any URL) call the API with no manual setup. To lock the
+      # API down to just the frontend later, add this variable in the Render
+      # dashboard set to the static site's URL. A bare hostname is accepted and
+      # treated as https://. (Kept out of the Blueprint so there's nothing to
+      # fill in for a one-click staging deploy.)
 
   # ---------------------------------------------------------------------------
   # Frontend: static build output (dist/) from Vite. The API base URL is baked
@@ -45,10 +46,15 @@ services:
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:
-      # The deployed backend URL, e.g. https://workforce-simulator-api.onrender.com
-      # Vite reads this at build time. Set it in the Render dashboard.
+      # Auto-wired: Render fills this with the backend service's hostname at
+      # build time, so there is nothing to copy/paste. Vite bakes it into the
+      # build; the frontend treats a bare hostname as https://. (To point at a
+      # different backend, override this value in the Render dashboard.)
       - key: VITE_API_BASE_URL
-        sync: false
+        fromService:
+          type: web
+          name: workforce-simulator-api
+          property: host
     # Single-page app: serve index.html for any path.
     routes:
       - type: rewrite
