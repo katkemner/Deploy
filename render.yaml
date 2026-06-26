@@ -46,15 +46,14 @@ services:
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:
-      # Auto-wired: Render fills this with the backend service's hostname at
-      # build time, so there is nothing to copy/paste. Vite bakes it into the
-      # build; the frontend treats a bare hostname as https://. (To point at a
-      # different backend, override this value in the Render dashboard.)
+      # The backend's PUBLIC URL, baked into the frontend build by Vite.
+      # NOTE: Render's `fromService` host property returns the service's private
+      # hostname (the bare service name), which a browser cannot reach — so this
+      # is set to the public https URL explicitly. It follows the pattern
+      # https://<api-service-name>.onrender.com; update it if you rename the
+      # backend service or add a custom domain.
       - key: VITE_API_BASE_URL
-        fromService:
-          type: web
-          name: workforce-simulator-api
-          property: host
+        value: https://workforce-simulator-api.onrender.com
     # Single-page app: serve index.html for any path.
     routes:
       - type: rewrite

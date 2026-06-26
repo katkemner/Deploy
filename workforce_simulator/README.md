@@ -209,9 +209,11 @@ Settings** section. See [`frontend/README.md`](frontend/README.md) for details.
 
 One-click staging deploy on Render (FastAPI backend + Vite static frontend).
 Click the button, sign in to Render, and click **Apply** — the two services are
-declared in [`render.yaml`](../render.yaml) and the frontend is auto-wired to the
-backend's URL, so there's nothing to copy/paste. Full step-by-step instructions
-(and a manual option) are in **[`docs/deployment.md`](docs/deployment.md)**.
+declared in [`render.yaml`](../render.yaml), and the frontend is preconfigured
+with the backend's public URL (`https://workforce-simulator-api.onrender.com`,
+the default service name), so there's nothing to copy/paste. Full step-by-step
+instructions (and a manual option) are in
+**[`docs/deployment.md`](docs/deployment.md)**.
 
 ⚠️ Staging is a demo only — no auth, database, or tenant isolation, so do not
 enter sensitive company data.
