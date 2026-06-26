@@ -91,6 +91,19 @@ PRIOR_FILLABLE_FIELDS = frozenset({
 # LOW is intentionally absent: a LOW match is never used for scoring.
 PRIOR_BLEND = {"HIGH": 0.8, "MEDIUM": 0.5}
 
+# --- WORKBank-backed scoring (opt-in; see use_workbank_for_scoring) -----------
+# The routing score fields an imported WORKBank match can fill (the same eight
+# as public priors; human_learning_value has no WORKBank source). Whether each
+# is actually filled also depends on the matched record having the input data.
+WORKBANK_FILLABLE_FIELDS = frozenset({
+    "ai_capability_fit", "human_judgment_need", "verification_ease",
+    "error_cost", "context_sensitivity", "repetition_level", "speed_value",
+    "collaboration_value",
+})
+# Share of the WORKBank value (vs the heuristic) when blending, by confidence.
+# HIGH -> use mostly WORKBank; MEDIUM -> 50/50; LOW is absent (never used).
+WORKBANK_BLEND = {"HIGH": 0.8, "MEDIUM": 0.5}
+
 
 def _prior_to_1to5(value: float) -> int:
     """Convert a 0-100 prior score to the routing 1-5 scale."""
@@ -157,16 +170,126 @@ def _profile_scores(skill, is_required, priority):
     return scores
 
 
-def derive_scores(task, binding=None, use_priors=False):
+def derive_scores(task, binding=None, use_priors=False,
+                  workbank_binding=None, use_workbank=False):
     """Return ``(scores, has_profile, meta)`` for a task.
 
-    Override order (highest first): MANUAL_INPUT, MATCHED_PUBLIC_PRIOR (only when
-    ``use_priors`` and a usable ``binding`` is supplied), EXISTING_HEURISTIC,
-    DEFAULT_FALLBACK. ``meta`` maps each field to kwargs for ``provenance.item``.
+    Full override order (highest first):
+      1. MANUAL_INPUT          - per-task ``routing_scores`` override
+      2. MATCHED_WORKBANK_PRIOR - when ``use_workbank`` and a usable WORKBank
+         match supplies the field (HIGH/MEDIUM confidence)
+      3. MATCHED_PUBLIC_PRIOR  - when ``use_priors`` and a usable public-prior
+         binding supplies the field
+      4. EXISTING_HEURISTIC    - the built-in skill profile
+      5. DEFAULT_FALLBACK      - the neutral default
 
-    When ``use_priors`` is false (or no usable binding), this reproduces the
-    original behaviour exactly - the prior branch is the only thing that can
-    change a score.
+    When WORKBank scoring is off or has no usable match, this dispatches to the
+    unchanged legacy path so public-prior / heuristic behaviour is byte-identical
+    to before.
+    """
+    wb_active = bool(
+        use_workbank and workbank_binding
+        and workbank_binding.get("match_confidence") in WORKBANK_BLEND
+        and workbank_binding.get("wb_fields")
+    )
+    if not wb_active:
+        return _derive_scores_legacy(task, binding, use_priors)
+    return _derive_scores_with_workbank(task, binding, use_priors, workbank_binding)
+
+
+def _derive_scores_with_workbank(task, binding, use_priors, workbank_binding):
+    """Per-field resolution with WORKBank above public priors (both optional)."""
+    overrides = _get_attr(task, "routing_scores", None)
+    skill = str(_get_attr(task, "required_skill", "")).strip().lower()
+    is_required = bool(_get_attr(task, "is_required", True))
+    priority = int(_get_attr(task, "priority", 1) or 1)
+    profile_scores = _profile_scores(skill, is_required, priority)
+
+    wb_blend = WORKBANK_BLEND[workbank_binding["match_confidence"]]
+    wb_fields = workbank_binding.get("wb_fields", {})
+    wb_id = workbank_binding.get("matched_workbank_task_id")
+    wb_occ = workbank_binding.get("matched_occupation_title")
+    wb_conf = workbank_binding["match_confidence"]
+    wb_conf_val = 0.85 if wb_conf == "HIGH" else 0.6
+
+    prior_active = bool(
+        use_priors and binding and binding.get("match_confidence") in PRIOR_BLEND
+    )
+    prior_fields = binding.get("prior_fields", {}) if prior_active else {}
+    prior_blend = PRIOR_BLEND[binding["match_confidence"]] if prior_active else 0.0
+    mpid = binding["matched_prior_id"] if prior_active else None
+    mconf = binding["match_confidence"] if prior_active else None
+    prior_conf_val = 0.85 if (prior_active and mconf == "HIGH") else 0.6
+
+    scores = {}
+    meta = {}
+    for f in SCORE_FIELDS:
+        if overrides and f in overrides:
+            scores[f] = _clamp_score(overrides[f])
+            meta[f] = _meta(
+                provenance.MANUAL_INPUT, "per-task override",
+                "Supplied directly as a per-task routing_scores override.")
+        elif f in WORKBANK_FILLABLE_FIELDS and f in wb_fields:
+            wb_val = _clamp_score(wb_fields[f])
+            if profile_scores is not None:
+                heur = profile_scores[f]
+                value = _clamp_score(round(wb_blend * wb_val + (1 - wb_blend) * heur))
+                blend_ratio = wb_blend
+                wb_pct = round(wb_blend * 100)
+                expl = (
+                    f"Filled from matched WORKBank task {wb_id} ({wb_conf} match): "
+                    f"blended {wb_pct}% WORKBank / {100 - wb_pct}% heuristic.")
+            else:
+                value = wb_val
+                blend_ratio = 1.0
+                expl = (
+                    f"Filled from matched WORKBank task {wb_id} ({wb_conf} match): "
+                    "WORKBank used directly (no heuristic profile).")
+            scores[f] = value
+            meta[f] = _meta(
+                provenance.MATCHED_WORKBANK_PRIOR, "WORKBank",
+                expl, confidence=wb_conf_val, matched_workbank_task_id=wb_id,
+                matched_occupation_title=wb_occ, match_confidence=wb_conf,
+                blend_ratio=blend_ratio)
+        elif prior_active and f in PRIOR_FILLABLE_FIELDS and f in prior_fields:
+            prior_val = _prior_to_1to5(prior_fields[f])
+            if profile_scores is not None:
+                heur = profile_scores[f]
+                value = _clamp_score(round(prior_blend * prior_val + (1 - prior_blend) * heur))
+                blend_ratio = prior_blend
+                prior_pct = round(prior_blend * 100)
+                expl = (
+                    f"Filled from matched public prior {mpid} ({mconf} match): "
+                    f"blended {prior_pct}% prior / {100 - prior_pct}% heuristic.")
+            else:
+                value = prior_val
+                blend_ratio = 1.0
+                expl = (
+                    f"Filled from matched public prior {mpid} ({mconf} match): "
+                    "prior used directly (no heuristic profile).")
+            scores[f] = value
+            meta[f] = _meta(
+                provenance.MATCHED_PUBLIC_PRIOR, f"matched prior: {mpid}", expl,
+                confidence=prior_conf_val, matched_prior_id=mpid,
+                match_confidence=mconf, blend_ratio=blend_ratio)
+        elif profile_scores is not None:
+            scores[f] = profile_scores[f]
+            meta[f] = _meta(
+                provenance.EXISTING_HEURISTIC, f"skill profile: {skill}",
+                f"Derived from the built-in '{skill}' skill profile.")
+        else:
+            scores[f] = 3
+            meta[f] = _meta(
+                provenance.DEFAULT_FALLBACK, "default (no profile)",
+                "No profile, WORKBank, or prior for this field; used the neutral default of 3.")
+    return scores, True, meta
+
+
+def _derive_scores_legacy(task, binding=None, use_priors=False):
+    """Original derivation: MANUAL > MATCHED_PUBLIC_PRIOR > HEURISTIC > DEFAULT.
+
+    Unchanged from before WORKBank-backed scoring existed; used whenever WORKBank
+    scoring is off or has no usable match, so existing behaviour is identical.
     """
     overrides = _get_attr(task, "routing_scores", None)
     skill = str(_get_attr(task, "required_skill", "")).strip().lower()
@@ -390,7 +513,8 @@ def estimate_ai_time_saved(decision: str, effort: float) -> float:
 # Per-task and project-level routing
 # ---------------------------------------------------------------------------
 
-def route_task(task, binding=None, use_priors=False, calibration=None) -> dict:
+def route_task(task, binding=None, use_priors=False, calibration=None,
+               workbank_binding=None, use_workbank=False) -> dict:
     """Produce the full routing record for one task, including provenance.
 
     When ``use_priors`` is true and ``binding`` is a usable matched prior, the
@@ -398,13 +522,18 @@ def route_task(task, binding=None, use_priors=False, calibration=None) -> dict:
     prior (see :func:`derive_scores`); this can change the routing decision.
     When ``use_priors`` is false the record is identical to before.
 
+    When ``use_workbank`` is true and ``workbank_binding`` is a usable WORKBank
+    match (HIGH/MEDIUM), WORKBank-derived scores take precedence over public
+    priors. With both toggles off the record is identical to before.
+
     ``calibration`` (optional) is a dict of approved multipliers. It does NOT
     change the routing *decision* or the suitability scores; it only scales the
     estimated review hours (``review_time_multiplier``) and expected rework
     hours (``rework_multiplier``), and the net AI-time-saved is recomputed from
     those scaled values. With ``calibration is None`` the record is unchanged.
     """
-    scores, has_profile, sources = derive_scores(task, binding, use_priors)
+    scores, has_profile, sources = derive_scores(
+        task, binding, use_priors, workbank_binding, use_workbank)
     decision, explanation = decide_route(scores, has_profile)
     effort = float(_get_attr(task, "effort_hours", 0) or 0)
     review = estimate_review_hours(decision, scores or {}, effort)
@@ -467,6 +596,32 @@ def route_task(task, binding=None, use_priors=False, calibration=None) -> dict:
             f"Matched prior {binding['matched_prior_id']} is MEDIUM confidence; "
             "affected scores were blended 50/50 with the heuristic.")
 
+    # WORKBank-backed scoring metadata (informational; always present).
+    wb_conf = (
+        workbank_binding.get("match_confidence")
+        if (use_workbank and workbank_binding) else None
+    )
+    wb_id = (
+        workbank_binding.get("matched_workbank_task_id")
+        if (use_workbank and workbank_binding) else None
+    )
+    wb_active = bool(
+        use_workbank and workbank_binding and wb_conf in WORKBANK_BLEND
+        and workbank_binding.get("wb_fields")
+    )
+    matched_workbank_prior_used = wb_id if wb_active else None
+    workbank_warning = None
+    if use_workbank:
+        if not (workbank_binding and workbank_binding.get("matched_workbank_task_id")
+                and workbank_binding.get("wb_fields")):
+            workbank_warning = (
+                "WORKBank scoring is enabled but no usable imported WORKBank "
+                "match was found for this task (import WORKBank data to use it).")
+        elif wb_active and wb_conf == "MEDIUM":
+            workbank_warning = (
+                f"Matched WORKBank task {wb_id} is MEDIUM confidence; affected "
+                "scores were blended 50/50 with the heuristic.")
+
     return {
         "task": _get_attr(task, "task", ""),
         "required_skill": _get_attr(task, "required_skill", ""),
@@ -485,22 +640,31 @@ def route_task(task, binding=None, use_priors=False, calibration=None) -> dict:
         "matched_prior_used": matched_prior_used,
         "prior_match_confidence": prior_match_confidence,
         "prior_warning": prior_warning,
+        "workbank_scoring_enabled": bool(use_workbank),
+        "matched_workbank_prior_used": matched_workbank_prior_used,
+        "workbank_match_confidence": wb_conf,
+        "workbank_warning": workbank_warning,
     }
 
 
-def route_tasks(tasks, bindings=None, use_priors=False, calibration=None) -> List[dict]:
+def route_tasks(tasks, bindings=None, use_priors=False, calibration=None,
+                workbank_bindings=None, use_workbank=False) -> List[dict]:
     """Routing records for every task, preserving order.
 
-    ``bindings`` (optional) maps a task name to its matched-prior binding; when
-    ``use_priors`` is true, each task's binding feeds prior-backed scoring.
-    ``calibration`` (optional) scales the review/rework estimates per task (see
-    :func:`route_task`).
+    ``bindings`` (optional) maps a task name to its matched public-prior binding;
+    when ``use_priors`` is true, each task's binding feeds prior-backed scoring.
+    ``workbank_bindings`` (optional) maps a task name to its WORKBank score
+    binding; when ``use_workbank`` is true, WORKBank-derived scores take
+    precedence over public priors. ``calibration`` (optional) scales the
+    review/rework estimates per task (see :func:`route_task`).
     """
     records = []
     for t in tasks:
         name = _get_attr(t, "task", "")
         binding = bindings.get(name) if bindings else None
-        records.append(route_task(t, binding, use_priors, calibration))
+        wb_binding = workbank_bindings.get(name) if workbank_bindings else None
+        records.append(route_task(
+            t, binding, use_priors, calibration, wb_binding, use_workbank))
     return records
 
 

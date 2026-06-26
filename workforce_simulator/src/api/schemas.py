@@ -88,6 +88,9 @@ class ScoringConfig(BaseModel):
     min_ai_agents_per_team: int = 0
     max_ai_agents_per_team: int = 2
     use_public_priors_for_scoring: bool = False
+    # Opt-in (separate from public priors): matched WORKBank tasks may supply
+    # routing scores, with WORKBank taking precedence over public priors.
+    use_workbank_for_scoring: bool = False
     # Tri-state: None -> auto (on iff an applied calibration config exists),
     # True -> consume approved multipliers, False -> ignore them (config kept).
     use_calibration_multipliers: Optional[bool] = None

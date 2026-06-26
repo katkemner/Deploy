@@ -119,6 +119,18 @@ export default function ConfigPanel({ config, onSaved }) {
         priors may supply/blend task routing scores)
       </label>
 
+      <label className="checkbox-row" style={{ marginBottom: 12 }}>
+        <input
+          type="checkbox"
+          checked={!!draft.use_workbank_for_scoring}
+          onChange={(e) =>
+            setField('use_workbank_for_scoring', e.target.checked)
+          }
+        />
+        Use WORKBank for scoring (off by default — when on, matched imported
+        WORKBank tasks may supply/blend routing scores, ahead of public priors)
+      </label>
+
       <button className="btn btn-primary" onClick={handleSave} disabled={busy}>
         {busy ? 'Saving…' : 'Save Config'}
       </button>

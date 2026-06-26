@@ -14,6 +14,7 @@ const DECISION_STYLE = {
 
 const SOURCE_STYLE = {
   MANUAL_INPUT: { background: '#eef2ff', color: '#4338ca', label: 'manual input' },
+  MATCHED_WORKBANK_PRIOR: { background: '#f0fdf4', color: '#15803d', label: 'WORKBank' },
   MATCHED_PUBLIC_PRIOR: { background: '#ecfeff', color: '#0e7490', label: 'public prior' },
   EXISTING_HEURISTIC: { background: '#e8f7ee', color: 'var(--green)', label: 'heuristic' },
   DEFAULT_FALLBACK: { background: '#fef3e2', color: 'var(--amber)', label: 'default' },
@@ -70,7 +71,14 @@ function ProvenanceRows({ items }) {
       <td style={{ whiteSpace: 'normal', minWidth: 260 }}>
         {p.explanation}
         {p.blend_ratio !== undefined && (
-          <em> (blend {Math.round(p.blend_ratio * 100)}% prior)</em>
+          <em> (blend {Math.round(p.blend_ratio * 100)}% source)</em>
+        )}
+        {p.matched_workbank_task_id && (
+          <div className="muted" style={{ marginTop: 2 }}>
+            WORKBank task {p.matched_workbank_task_id}
+            {p.matched_occupation_title ? ` · ${p.matched_occupation_title}` : ''}
+            {p.match_confidence ? ` · ${p.match_confidence}` : ''}
+          </div>
         )}
       </td>
     </tr>
@@ -156,6 +164,19 @@ function WhyPanel({ row }) {
       {row.prior_warning && (
         <div className="msg" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}>
           ⚠ {row.prior_warning}
+        </div>
+      )}
+      {row.workbank_scoring_enabled && (
+        <p className="section-hint" style={{ marginTop: 0 }}>
+          WORKBank scoring is <strong>ON</strong>.{' '}
+          {row.matched_workbank_prior_used
+            ? `Matched WORKBank task used: ${row.matched_workbank_prior_used} (${row.workbank_match_confidence}).`
+            : 'No WORKBank task used for this row.'}
+        </p>
+      )}
+      {row.workbank_warning && (
+        <div className="msg" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}>
+          ⚠ {row.workbank_warning}
         </div>
       )}
       <table className="table">

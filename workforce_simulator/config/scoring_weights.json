@@ -13,5 +13,6 @@
   "min_ai_agents_per_team": 0,
   "max_ai_agents_per_team": 2,
   "use_public_priors_for_scoring": false,
+  "use_workbank_for_scoring": false,
   "use_calibration_multipliers": null
 }
