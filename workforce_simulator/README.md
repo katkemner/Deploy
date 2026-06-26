@@ -398,6 +398,41 @@ scoring."* **The match is informational — it does NOT affect routing, scoring,
 review/rework, calibration, Pareto, Monte Carlo, the optimizer, or any
 recommendation.**
 
+#### WORKBank-backed scoring (opt-in, off by default)
+
+A **separate** toggle, **`use_workbank_for_scoring`** (default **`false`**),
+lets matched imported WORKBank tasks supply/blend the routing suitability
+scores. It is independent of `use_public_priors_for_scoring` — existing
+public-prior scoring keeps working as-is. When on, the per-field override order
+is:
+
+1. `MANUAL_INPUT` — a per-task `routing_scores` override
+2. `MATCHED_WORKBANK_PRIOR` — a usable WORKBank match (HIGH/MEDIUM)
+3. `MATCHED_PUBLIC_PRIOR` — when `use_public_priors_for_scoring` is also on
+4. `EXISTING_HEURISTIC` — the built-in skill profile
+5. `DEFAULT_FALLBACK`
+
+WORKBank normalized fields map onto the 1–5 routing scores (`workbank_matching.workbank_scores`):
+`ai_capability_fit`←`avg_expert_ai_capability`; `human_judgment_need`←mean of the
+HAS values; `verification_ease`←inverse of `uncertainty_or_high_stakes_requirement`;
+`error_cost`←`uncertainty_or_high_stakes_requirement`; `context_sensitivity`←`domain_expertise_requirement`;
+`speed_value`←`avg_worker_automation_desire`; `collaboration_value`←HAS (peaking at
+mid agency); `repetition_level`←`task_type` (only when recognised, else not filled).
+Manual scores are never overwritten. Blend by match confidence: **HIGH** 80%
+WORKBank / 20% heuristic, **MEDIUM** 50/50, **LOW** ignored.
+
+Every WORKBank-influenced score carries full provenance: `field_name`, `value`,
+`source_type: MATCHED_WORKBANK_PRIOR`, `source_name: WORKBank`, `confidence`,
+`explanation`, `matched_workbank_task_id`, `matched_occupation_title`,
+`match_confidence`, and `blend_ratio` (when blended). Task routing responses also
+expose `workbank_scoring_enabled`, `matched_workbank_prior_used`,
+`workbank_match_confidence`, and a `workbank_warning` (MEDIUM blend, or toggle-on
+but no imported data). The **Use WORKBank for scoring** toggle lives under *Data
+and Settings*, and the routing **Why?** panel shows the source of each score
+(manual / WORKBank / public prior / heuristic / fallback) plus the matched
+WORKBank task, occupation, confidence, and blend ratio. **With the toggle off
+(the default) nothing changes.**
+
 #### Prior matching preview (preview only)
 
 `src/prior_matching.py` deterministically matches each project task to its

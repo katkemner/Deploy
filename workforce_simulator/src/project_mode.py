@@ -496,6 +496,8 @@ def run_project_simulation(
     config: SimConfig,
     prior_bindings: dict = None,
     calibration: dict = None,
+    workbank_bindings: dict = None,
+    use_workbank: bool = False,
 ) -> dict:
     """Run the full Project Mode comparison and return the response payload.
 
@@ -505,6 +507,10 @@ def run_project_simulation(
     ``prior_bindings`` (optional) enables prior-backed routing scores when
     ``config.use_public_priors_for_scoring`` is true. When the flag is off (the
     default) the routing is computed exactly as before.
+
+    ``workbank_bindings`` + ``use_workbank`` (optional) enable WORKBank-backed
+    routing scores (WORKBank takes precedence over public priors). Off by
+    default, leaving routing unchanged.
 
     ``calibration`` (optional) is a dict of approved multipliers applied to every
     option's simulation and to the task routing's review/rework estimates. When
@@ -597,7 +603,8 @@ def run_project_simulation(
     # Task-level routing (team-independent) + per-option review/rework burden.
     use_priors = bool(getattr(config, "use_public_priors_for_scoring", False))
     routing_records = routing.route_tasks(
-        tasks, bindings=prior_bindings, use_priors=use_priors, calibration=calibration
+        tasks, bindings=prior_bindings, use_priors=use_priors, calibration=calibration,
+        workbank_bindings=workbank_bindings, use_workbank=use_workbank,
     )
     routing_summary = routing.summarize_routing(routing_records)
     burdens = {k: _burden(options[k], routing_records) for k in OPTION_LABELS}

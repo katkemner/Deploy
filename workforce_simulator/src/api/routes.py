@@ -450,14 +450,23 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
         _prior_bindings(task_dicts)
         if config.use_public_priors_for_scoring else None
     )
+    use_workbank = config.use_workbank_for_scoring
+    wb_bindings, wb_present = (
+        _workbank_bindings(task_dicts) if use_workbank else (None, False)
+    )
     active = _active_calibration(config)
     try:
         response = project_mode.run_project_simulation(
             employees, ai_agents, request.model_dump(), config,
             prior_bindings=bindings, calibration=active["engine_multipliers"],
+            workbank_bindings=wb_bindings, use_workbank=use_workbank,
         )
     except project_mode.ProjectModeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    if use_workbank and not wb_present:
+        response["workbank_warning"] = (
+            "WORKBank scoring is enabled but no imported WORKBank data is "
+            "available; scores fall back to public priors / heuristics.")
 
     # Additive, informational-only prior-match preview. This does NOT affect
     # any routing/scoring/recommendation produced above - it only annotates the
@@ -552,19 +561,28 @@ def route_tasks(request: RouteTasksRequest) -> dict:
     """
     config = config_loader.load_config(CONFIG_PATH)
     use_priors = config.use_public_priors_for_scoring
+    use_workbank = config.use_workbank_for_scoring
     task_dicts = [t.model_dump() for t in request.tasks]
     bindings = _prior_bindings(task_dicts) if use_priors else None
+    wb_bindings, wb_present = _workbank_bindings(task_dicts) if use_workbank else (None, False)
     active = _active_calibration(config)
     records = routing.route_tasks(
         task_dicts, bindings=bindings, use_priors=use_priors,
         calibration=active["engine_multipliers"],
+        workbank_bindings=wb_bindings, use_workbank=use_workbank,
     )
-    return {
+    out = {
         "public_priors_enabled": use_priors,
+        "workbank_scoring_enabled": use_workbank,
         "task_routing": records,
         "routing_summary": routing.summarize_routing(records),
         **active["response"],
     }
+    if use_workbank and not wb_present:
+        out["workbank_warning"] = (
+            "WORKBank scoring is enabled but no imported WORKBank data is "
+            "available; scores fall back to public priors / heuristics.")
+    return out
 
 
 def _prior_bindings(task_dicts: list):
@@ -574,6 +592,17 @@ def _prior_bindings(task_dicts: list):
     except priors.PriorsError:
         return None
     return prior_matching.build_score_bindings(task_dicts, bundle)
+
+
+def _workbank_bindings(task_dicts: list):
+    """Build WORKBank score bindings for tasks. Returns (bindings, data_present).
+
+    ``data_present`` is True only when imported WORKBank data actually exists,
+    so callers can warn when the toggle is on but nothing was imported.
+    """
+    normalized = workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
+    present = bool(normalized.get("normalized_priors"))
+    return workbank_matching.build_score_bindings(task_dicts, normalized), present
 
 
 # ---------------------------------------------------------------------------

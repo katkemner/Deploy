@@ -198,3 +198,129 @@ def match_tasks(tasks, normalized: dict, top_n: int = 3) -> List[dict]:
     """Match every project task to its closest WORKBank task. Returns dicts."""
     candidates = build_candidates(normalized)
     return [match_task(t, candidates, top_n).as_dict() for t in tasks]
+
+
+# ---------------------------------------------------------------------------
+# WORKBank-backed scoring inputs (used only when use_workbank_for_scoring=True)
+# ---------------------------------------------------------------------------
+#
+# Maps a normalized WORKBank record's fields onto the routing 1-5 suitability
+# scores. This is consumed by ``routing.derive_scores`` behind the toggle - it
+# never changes scores on its own. Only fields the record can support are
+# returned; absent inputs are simply not filled (the heuristic stands).
+
+# Deterministic repetition level (1-5) by WORKBank task_type. Unknown types are
+# intentionally absent so repetition_level is *not* filled from WORKBank.
+REPETITION_BY_TASK_TYPE = {
+    "automation": 5,
+    "coding": 4,
+    "data": 4,
+    "qa": 4,
+    "testing": 4,
+    "documentation": 4,
+    "writing": 4,
+    "finance": 4,
+    "operations": 3,
+    "research": 3,
+    "planning": 2,
+    "care": 2,
+    "strategy": 1,
+}
+
+
+def _clamp_1to5(v) -> int:
+    return max(1, min(5, int(round(v))))
+
+
+def _unit_to_1to5(value: float) -> int:
+    """Map a 0..1 normalized value to the routing 1-5 scale (0 -> 1, 1 -> 5)."""
+    return _clamp_1to5(value * 4 + 1)
+
+
+def _inverse_unit_to_1to5(value: float) -> int:
+    return _unit_to_1to5(1.0 - value)
+
+
+def _num(record: dict, key: str):
+    v = record.get(key)
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def workbank_scores(record: dict) -> dict:
+    """Derive routing 1-5 suitability scores from one normalized WORKBank record.
+
+    Only the fields the record can support are returned (others fall back to the
+    heuristic). Mapping (see the WORKBank-backed scoring spec):
+
+    * ai_capability_fit   <- avg_expert_ai_capability
+    * human_judgment_need <- mean(avg_worker_desired_has, avg_expert_feasible_has)
+    * verification_ease   <- inverse(uncertainty_or_high_stakes_requirement)
+    * error_cost          <- uncertainty_or_high_stakes_requirement
+    * context_sensitivity <- domain_expertise_requirement
+    * repetition_level    <- task_type (only when recognised)
+    * speed_value         <- avg_worker_automation_desire
+    * collaboration_value <- HAS values, highest at mid agency (H3/H4)
+    """
+    out: dict = {}
+
+    cap = _num(record, "avg_expert_ai_capability")
+    if cap is not None:
+        out["ai_capability_fit"] = _unit_to_1to5(cap)
+
+    desired = _num(record, "avg_worker_desired_has")
+    feasible = _num(record, "avg_expert_feasible_has")
+    has_vals = [v for v in (desired, feasible) if v is not None]
+    if has_vals:
+        mean_has = sum(has_vals) / len(has_vals)
+        out["human_judgment_need"] = _unit_to_1to5(mean_has)
+        # Collaboration peaks at mid agency (HAS H3/H4 ~ 0.625 on a 0..1 scale).
+        peak = 0.625
+        collab_unit = max(0.0, 1.0 - abs(mean_has - peak) / 0.625)
+        out["collaboration_value"] = _unit_to_1to5(collab_unit)
+
+    unc = _num(record, "uncertainty_or_high_stakes_requirement")
+    if unc is not None:
+        out["verification_ease"] = _inverse_unit_to_1to5(unc)
+        out["error_cost"] = _unit_to_1to5(unc)
+
+    dom = _num(record, "domain_expertise_requirement")
+    if dom is not None:
+        out["context_sensitivity"] = _unit_to_1to5(dom)
+
+    rep = REPETITION_BY_TASK_TYPE.get(str(record.get("task_type", "") or "").strip().lower())
+    if rep is not None:
+        out["repetition_level"] = rep
+
+    auto = _num(record, "avg_worker_automation_desire")
+    if auto is not None:
+        out["speed_value"] = _unit_to_1to5(auto)
+
+    return out
+
+
+def build_score_bindings(tasks, normalized: dict) -> dict:
+    """Map each task name to its WORKBank score binding for backed scoring.
+
+    Each binding carries the matched WORKBank task id, occupation, match
+    confidence/score, and the WORKBank-derived 1-5 score inputs (``wb_fields``).
+    Tasks whose closest match is LOW (or with no imported data) still get a
+    binding, but with empty/low fields so the consumer ignores them.
+    """
+    candidates = build_candidates(normalized)
+    by_id = {
+        str(rec.get("workbank_task_id", "") or ""): rec
+        for rec in (normalized or {}).get("normalized_priors", []) or []
+    }
+    bindings: dict = {}
+    for t in tasks:
+        m = match_task(t, candidates)
+        name = _get(t, "task", "") or ""
+        rec = by_id.get(m.matched_workbank_task_id or "")
+        bindings[name] = {
+            "matched_workbank_task_id": m.matched_workbank_task_id,
+            "matched_occupation_title": m.matched_occupation_title,
+            "match_confidence": m.match_confidence,
+            "match_score": m.match_score,
+            "wb_fields": workbank_scores(rec) if rec else {},
+        }
+    return bindings
