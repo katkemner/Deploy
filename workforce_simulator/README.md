@@ -34,6 +34,89 @@ tasks, the simulator:
 
 ---
 
+## MVP walkthrough (read this first)
+
+The **Workforce Simulator** helps a manager answer one question: *given this
+project, which mix of people and AI agents should I use, and what outcome should
+I expect?* Everything is **deterministic** — the same inputs always produce the
+same output, and no LLM is used to invent numbers.
+
+The primary flow is **Project Mode**. You describe a project (tasks, your current
+team, an objective), run a simulation, and get five staffing options with a
+recommendation, a human-vs-AI routing plan per task, an uncertainty analysis, and
+a tradeoff view.
+
+**The five staffing options:**
+
+| Option | What it means |
+|---|---|
+| **Current Team** | Exactly the people + AI agents you selected (your baseline). |
+| **AI-Assisted Current Team** | Your humans plus AI agents the engine adds where they improve coverage, speed, cost, or risk. |
+| **Recommended Balanced Team** | The valid team with the best overall weighted score. |
+| **Fastest Valid Team** | The valid team with the shortest estimated duration. |
+| **Lowest-Cost Valid Team** | The cheapest valid team. |
+
+A team is **valid** when it covers every required skill.
+
+**Task routing** splits each task between humans and AI (AI_ONLY,
+AI_FIRST_HUMAN_REVIEW, HUMAN_FIRST_AI_ASSIST, HUMAN_ONLY, or ESCALATE). From that
+split it estimates **review hours** (human time checking AI output), **rework
+hours** (expected time fixing AI mistakes), and **net AI time saved** (AI time
+saved minus review + rework). Each routing number is traceable in a **Why?**
+panel.
+
+**Three optional scoring data sources** (all off by default, all independent):
+
+- **Public priors** — built-in *representative seed* values (illustrative, not
+  exact published figures). Toggle: *Use public priors for scoring*.
+- **WORKBank priors** — your own *imported, normalized* WORKBank data. Toggle:
+  *Use WORKBank for scoring*. Takes precedence over public priors.
+- **Calibration multipliers** — adjustments derived from *your approved
+  historical calibration*. Toggle: *Use approved calibration multipliers* (in the
+  Calibration panel).
+
+When all three are off, scoring uses only your manual inputs and the built-in
+skill heuristics. Each one, when enabled, **can change the recommendation** — and
+every affected number is labelled with its source (manual / public prior /
+WORKBank / heuristic / fallback / calibration).
+
+The **Pareto Tradeoff View** marks which staffing options are *non-dominated*
+(no other option beats them on every objective at once). It is read-only context
+and never changes the recommendation.
+
+### Demo script
+
+A ~5-minute click-through for a manual demo (start the API + frontend first —
+see *Install & run* below):
+
+1. **Open Project Mode** — the dashboard leads with it.
+2. **Review the sample project** — 10 preloaded tasks and a suggested current
+   team. Click *Fill current best team* to populate humans + AI agents.
+3. **Run simulation** — click *Run Project Simulation*.
+4. **Compare staffing options** — read the recommendation summary, then the
+   five option cards and the comparison table (cost, duration, review/rework,
+   reviewer bottleneck).
+5. **Open a task routing Why? panel** — expand any routing row to see each 1–5
+   score's source and the routing rationale.
+6. **Review uncertainty** — run the Monte Carlo panel for P10/P50/P90 duration &
+   cost. The deadline/budget probabilities also appear when those targets are set
+   (the sample pre-fills them; clear a field to omit it).
+7. **Review the Pareto Tradeoff View** — see which options are on the frontier
+   and what tradeoff each represents.
+8. **Review priors and calibration settings** — open *Data and Settings*: the
+   three scoring toggles (all off by default), the Evidence Priors panel
+   (including WORKBank import status), and the Calibration panel.
+
+### Intentionally NOT built yet
+
+This MVP focuses on the deterministic simulation core. It deliberately does
+**not** include: authentication / user accounts, a database (data lives in local
+CSV/JSON files), deployment / hosting config, payments, or an LLM-based project
+brief parser. Scoring is entirely formula-driven; the optional data sources above
+only ground the existing scores, they do not call any external service.
+
+---
+
 ## Project structure
 
 ```
@@ -49,6 +132,9 @@ workforce_simulator/
 ├── src/
 │   ├── main.py                # CLI entry point (run this)
 │   ├── config_loader.py       # loads scoring_weights.json
+│   ├── priors.py              # public evidence priors (foundation + loader)
+│   ├── prior_matching.py      # deterministic task-to-prior matching (preview)
+│   ├── calibration.py         # historical actuals vs predictions (informational)
 │   ├── data_loader.py         # reads CSVs into model objects
 │   ├── models.py              # Worker / Task / Team / Assignment models
 │   ├── simulator.py           # task assignment + per-team metrics
@@ -112,10 +198,486 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**. It shows API health, the data tables, CSV
-upload, the scoring config editor, a manual team builder, the full simulation
-(top 5 ranked teams), task schedules with the critical path highlighted, and a
-scenario comparison. See [`frontend/README.md`](frontend/README.md) for details.
+Open **http://localhost:5173**. The dashboard now leads with **Project Mode**
+(below); the raw data tables, CSV upload, scoring config, manual team builder,
+and full team-ranking simulation are tucked under a collapsible **Data and
+Settings** section. See [`frontend/README.md`](frontend/README.md) for details.
+
+### Deploy to staging
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/katkemner/Deploy)
+
+One-click staging deploy on Render (FastAPI backend + Vite static frontend).
+Click the button, sign in to Render, and click **Apply** — the two services are
+declared in [`render.yaml`](../render.yaml), and the frontend is preconfigured
+with the backend's public URL (`https://workforce-simulator-api.onrender.com`,
+the default service name), so there's nothing to copy/paste. Full step-by-step
+instructions (and a manual option) are in
+**[`docs/deployment.md`](docs/deployment.md)**.
+
+⚠️ Staging is a demo only — no auth, database, or tenant isolation, so do not
+enter sensitive company data.
+
+### Project Mode (the primary flow)
+
+Project Mode reframes the app around a single question: *“Given this project,
+what team should I use, should I add AI agents, and what outcome should I
+expect?”* Instead of starting from raw data tables, the manager describes the
+project and their current team, then compares **staffing options**.
+
+**How to use it:**
+
+1. Fill in the project (name, goal, optional deadline-hours and budget targets,
+   max team size, max AI agents) and pick an **optimization objective**
+   (Balanced, Fastest delivery, Lowest cost, Best skill coverage, Best workload
+   balance, or Lowest risk).
+2. Edit the **Project Task Builder** — it preloads the 10 sample tasks; add,
+   edit, or delete tasks and pick dependencies from existing task names. No CSV
+   editing required.
+3. Select your **Current Team** (humans + AI agents). A live required-skill
+   coverage preview shows gaps before you simulate.
+4. Click **Run Project Simulation**.
+
+**What you get back** — five decision options, a comparison table, and a
+deterministic recommendation summary:
+
+| Option | Meaning |
+|---|---|
+| **Current Team** | Exactly the team you selected. |
+| **AI-Assisted Current Team** | Your humans + AI agents the engine greedily adds where they improve coverage, speed, cost, or risk. |
+| **Recommended Balanced Team** | The highest total-score valid team. |
+| **Fastest Valid Team** | The valid team with the shortest estimated duration. |
+| **Lowest-Cost Valid Team** | The cheapest valid team. |
+
+The **Recommendation Summary** names the recommended option, why it won, the
+main bottleneck, the critical path, the biggest risk, and a concrete *what to
+change next* (e.g. “add a React-capable person”, “extend the deadline or move
+Frontend build off Alex”, “add the recommended AI agents”). A team is
+“**valid**” when it covers every required skill.
+
+#### How `POST /simulate/project` works
+
+The endpoint accepts a **JSON project scenario** instead of reading
+`project_tasks.csv`:
+
+```json
+{
+  "project_name": "Sample Project",
+  "project_goal": "Ship the MVP",
+  "deadline_target_hours": 90,
+  "budget_target": 15000,
+  "optimization_objective": "balanced",
+  "team_constraints": { "max_humans_per_team": 5, "max_ai_agents_per_team": 2 },
+  "tasks": [ { "task": "Backend API", "required_skill": "API", "effort_hours": 35,
+               "priority": 2, "dependencies": [], "is_required": true } ],
+  "current_team_human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+  "current_team_ai_agent_names": ["AI Research Agent", "AI QA Reviewer"]
+}
+```
+
+It uses the current employees/AI agents from CSV, uses the **tasks from the
+request body** (it does **not** read or overwrite `project_tasks.csv`),
+simulates the current team and an AI-assisted version, ranks all valid teams to
+find the balanced/fastest/cheapest picks, and returns the options + comparison
+table + recommendation. It reuses the existing engine (`optimizer`,
+`simulator`, `scheduler`, `scoring`) — no scoring or scheduling logic is
+duplicated. Everything is deterministic; no LLM is used.
+
+**Known limitations (Project Mode MVP):** the recommended option follows the
+chosen objective strictly (e.g. “Balanced” picks the top total-score team even
+if your AI-assisted current team is close and cheaper — the summary points this
+out so you can choose differently); the AI-assist greedy adds agents one at a
+time by a fixed coverage→speed→cost→risk priority; task dependencies are
+respected only within the submitted task set; and cost efficiency is normalised
+across the generated team population for the run.
+
+#### Tradeoff view — Pareto-front preview (read-only)
+
+Alongside the single recommendation, `POST /simulate/project` returns a
+**Pareto-front preview** that marks which of the five staffing options are
+**non-dominated** across ten objectives — minimize *duration, cost, human hours,
+review hours, expected rework hours, risk*; maximize *skill coverage,
+productivity, workload balance, delivery confidence*.
+
+Option *A dominates* option *B* when A is at least as good as B on **every**
+objective and strictly better on **at least one**. An option is **Pareto-optimal**
+when nothing dominates it: you cannot improve any objective without sacrificing
+another. The response adds two keys:
+
+- `pareto_front` — one `ParetoOption` per staffing option: `option_id`,
+  `option_name`, `is_pareto_optimal`, `dominated_by`, `dominates`,
+  `tradeoff_summary`, `objective_values` (the ten values), `strengths`,
+  `weaknesses`.
+- `pareto_explanation` — a deterministic paragraph naming the frontier options
+  and noting the recommendation's place on it.
+
+This is **informational only**: it does not re-rank options, change the
+recommendation, or touch scoring/routing. If the recommended option happens to
+be dominated, the explanation (and the UI's **Tradeoff View** section) adds a
+warning — but the recommendation is left unchanged. The frontend renders the
+recommended option, the Pareto-optimal options and the tradeoff each represents
+(fastest, lowest cost, lowest risk, most balanced, …), and an objective matrix.
+
+### Task-level human/AI routing
+
+Before scheduling, each task gets a deterministic **routing recommendation** for
+how humans and AI should split the work (`src/routing.py`). Every task is scored
+1–5 on nine dimensions — `ai_capability_fit`, `human_judgment_need`,
+`verification_ease`, `error_cost`, `context_sensitivity`, `repetition_level`,
+`speed_value`, `human_learning_value`, `collaboration_value` — derived from a
+per-skill profile table (with small adjustments for required/optional and
+priority, and optional per-task overrides via `routing_scores`). From those
+scores a rule set assigns one of:
+
+| Routing | When |
+|---|---|
+| **AI_ONLY** | high AI fit + high repetition + easy verification + low judgment + low error cost |
+| **AI_FIRST_HUMAN_REVIEW** | strong AI fit and verifiable, but human approval still adds value |
+| **HUMAN_FIRST_AI_ASSIST** | human judgment leads; AI accelerates research/drafting/analysis/QA/formatting |
+| **HUMAN_ONLY** | two or more of: high error cost, hard to verify, high context, heavy judgment |
+| **ESCALATE** | inputs missing (unprofiled skill) or scores too uncertain |
+
+Each routed task also gets an **explanation**, a **review-hours** estimate
+(human time to check AI output, scaled by error cost and verification ease), an
+**expected-rework-hours** estimate (AI errors needing fixing), and the **AI time
+saved**. At the project level these roll up so the recommendation can say
+whether **AI actually saves time or just shifts work to reviewers**
+(`net_ai_time_saved = ai_time_saved − review − rework`). Per option, a
+**reviewer-bottleneck** check flags when AI review burden exceeds ~35% of the
+team’s human capacity (a team with no AI agents carries no review burden).
+
+Routing surfaces in two places:
+
+* `POST /route/tasks` — routing table + summary for a set of tasks, no team
+  needed (used by the “Preview task routing” button).
+* `POST /simulate/project` — the response now also includes `task_routing`,
+  `routing_summary`, per-option `review_burden_hours` / `expected_rework_hours`
+  / `net_time_saved` / `reviewer_bottleneck`, and an `ai_time_verdict` in the
+  recommendation.
+
+**Routing limitations (MVP):** routing is **advisory** — it informs the
+review/rework/bottleneck analysis but does not yet change how tasks are assigned
+or scheduled; suitability scores come from a fixed skill-profile table (override
+per task if needed); and review/rework hours are transparent heuristics, not
+calibrated against real data.
+
+#### Routing provenance (explainability)
+
+Every routing record carries **provenance** — metadata explaining *where each
+value came from* — without changing any value or decision (`src/provenance.py`).
+Three source types are used:
+
+- **`MANUAL_INPUT`** — you supplied it (a per-task `routing_scores` override).
+- **`EXISTING_HEURISTIC`** — the built-in deterministic logic produced it (a
+  skill profile, a routing rule, or a formula).
+- **`DEFAULT_FALLBACK`** — a default was used because nothing else applied (an
+  unprofiled skill, or a score missing from a partial override).
+
+Each `/route/tasks` and `/simulate/project` task-routing record gains:
+
+- **`score_provenance`** — one entry per suitability score
+  (`ai_capability_fit`, `human_judgment_need`, `verification_ease`,
+  `error_cost`, `context_sensitivity`, `repetition_level`, `speed_value`,
+  `human_learning_value`, `collaboration_value`).
+- **`route_provenance`** — one entry each for `recommended_route`,
+  `estimated_review_hours`, `expected_rework_hours`, and `net_ai_time_saved`.
+
+Each entry has `field_name`, `value`, `source_type`, `source_name`,
+`confidence` (a deterministic 0–1 number set by source type: manual 0.95,
+heuristic 0.7, fallback 0.3), and a short `explanation`. In the UI, each routed
+task has an expandable **“Why?”** panel listing these entries. This layer is
+purely additive — it changes no score, formula, or routing decision.
+
+### Monte-Carlo uncertainty analysis
+
+The plain simulation returns single-number (point) estimates. Real projects are
+uncertain, so `POST /simulate/uncertainty` (`src/montecarlo.py`) propagates that
+uncertainty by running the **real critical-path scheduler many times**. Each
+iteration samples every task's effort from a **triangular distribution** between
+its optimistic, likely, and pessimistic estimates, then schedules the team and
+records the resulting duration and cost. Over hundreds of iterations it reports:
+
+- **P10 / P50 / P90** (and min/mean/max) for **duration** and **cost**,
+- a **duration histogram**, and
+- the **empirical probability** of meeting a deadline and staying within budget.
+
+This is exactly the patent's "run a plurality of iterations… factoring in
+unforeseen challenges, resource availability, or changes in project scope."
+Nothing is invented — it is correct statistics over the ranges *you* supply.
+
+- **Inputs:** the team (human + AI names), the tasks, optional per-task
+  `effort_optimistic` / `effort_pessimistic` (otherwise a default band of
+  0.8×–1.5× of `effort_hours` is used and shown back to you), `iterations`
+  (default 500), and a `seed`.
+- **Reproducible:** a fixed `seed` makes every run identical (the engine uses a
+  seeded RNG), so results are deterministic and auditable.
+- **Honest scope:** it propagates the uncertainty you enter — it does not invent
+  accuracy. Outputs are only as good as the effort ranges provided; they are not
+  calibrated against historical outcomes.
+
+In the UI, the **Uncertainty analysis (Monte Carlo)** panel in Project Mode runs
+this for the currently-selected team and shows P10/P50/P90 duration & cost, the
+deadline/budget probabilities, and a duration histogram.
+
+### Public evidence priors (foundation only)
+
+A data foundation for *future* grounding of task routing in public evidence
+(`src/priors.py`, `data/priors/public_priors_seed.json`). This slice ships the
+structures, a validating loader, and a read-only API/UI — **the priors are not
+yet connected to routing or scoring, and they change no behaviour.**
+
+The seed file carries four sections, validated on load:
+
+- **`source_weights`** (`PriorSourceWeight`) — one per source category, with a
+  `source_weight` and `source_confidence` (both validated to 0–1).
+- **`evidence_priors`** (`EvidencePrior`) — individual evidence points
+  (`task_type`, `skill`, `occupation`, `metric_name`, `metric_value`, …).
+- **`task_routing_priors`** (`TaskRoutingPrior`) — per task-type prior scores
+  (`ai_capability_fit_prior`, `human_judgment_need_prior`, … `human_agency_prior`),
+  each validated to 0–100, with `source_refs`.
+- **`hybrid_guardrail_priors`** (`HybridGuardrailPrior`) — `hybrid_bonus_or_penalty`
+  plus `human_ai_synergy_prior` / `human_augmentation_prior` (0–100).
+
+The five seed source categories are `WORKBank_STYLE`,
+`NATURE_HUMAN_AI_META_ANALYSIS`, `BLS_ORS_STYLE`, `SOFTWARE_WORKFLOW_PRIOR`, and
+`AI_AGENT_BENCHMARK_PRIOR`. **All seed values are representative placeholders,
+not exact figures from those sources** — the file is marked
+`representative_seed: true`. `GET /priors` returns the loaded sections, and a
+read-only **Evidence Priors** panel under *Data and Settings* shows the sources,
+weights, and counts with a clear "not yet connected to routing" note.
+
+#### WORKBank importer (read-only; not connected to scoring)
+
+`src/workbank.py` imports real **WORKBank** CSV exports into a single
+normalized, local priors file and exposes them read-only. It reads three files
+from `data/imports/workbank/` (git-ignored — place your own exports there):
+
+- `task_statement_with_metadata.csv` — the task spine: `task_id`,
+  `task_statement`, `occupation_title`, `onet_soc_code`, `task_type`, and the
+  four 0–1 requirement metadata columns (`physical_action_requirement`,
+  `uncertainty_or_high_stakes_requirement`, `domain_expertise_requirement`,
+  `interpersonal_communication_requirement`).
+- `domain_worker_desires.csv` — worker survey rows (`worker_automation_desire`,
+  `worker_desired_has`), many per task, averaged.
+- `expert_rated_technological_capability.csv` — expert rating rows
+  (`expert_ai_capability`, `expert_feasible_has`), many per task, averaged.
+
+The importer validates required columns, joins the survey/rating rows onto each
+task **by `task_id` (with a stable task-text fallback)**, computes per-task
+averages and sample counts, derives a `source_confidence` from data coverage,
+and writes `data/priors/workbank_normalized.json` (also git-ignored). It **fails
+clearly** when a file is missing or a required column is absent/malformed.
+
+`GET /priors/workbank` returns `import_status` (`imported` / `not_imported` /
+`error`), `task_count`, `occupation_count`, `normalized_priors`, and
+`validation_warnings`. The **Evidence Priors** panel shows the import status,
+task/occupation counts, any missing-file warning, and the label *"Read-only. Not
+yet connected to scoring."* **The normalized WORKBank data is NOT used by
+routing, scoring, prior-backed scoring, calibration, Monte Carlo, or Project
+Mode — it changes no simulation behaviour.**
+
+#### WORKBank matching preview (preview only)
+
+`src/workbank_matching.py` deterministically matches each project task to its
+closest **imported WORKBank task**, reusing the same normalisation/similarity
+primitives and confidence thresholds as the public-prior matcher (HIGH ≥ 0.70,
+MEDIUM ≥ 0.45, else LOW). It blends a primary text score (token Jaccard +
+`difflib` over the project task's descriptive text vs the WORKBank `task_text`)
+with deterministic task-type and skill/occupation bonuses into one score.
+
+`POST /priors/workbank/match-tasks` returns one `WorkbankTaskMatch` per task
+(`project_task_id`, `project_task_name`, `matched_workbank_task_id`,
+`matched_task_text`, `matched_occupation_title`, `matched_task_type`,
+`match_score`, `match_confidence`, `match_method`, `explanation`, and up to three
+`candidate_matches`). `POST /simulate/project` additionally annotates each
+`task_routing` row with a read-only `workbank_match_preview`, shown in the
+Project Mode routing **Why?** panel under *"Preview only. Not yet used for
+scoring."* **The match is informational — it does NOT affect routing, scoring,
+review/rework, calibration, Pareto, Monte Carlo, the optimizer, or any
+recommendation.**
+
+#### WORKBank-backed scoring (opt-in, off by default)
+
+A **separate** toggle, **`use_workbank_for_scoring`** (default **`false`**),
+lets matched imported WORKBank tasks supply/blend the routing suitability
+scores. It is independent of `use_public_priors_for_scoring` — existing
+public-prior scoring keeps working as-is. When on, the per-field override order
+is:
+
+1. `MANUAL_INPUT` — a per-task `routing_scores` override
+2. `MATCHED_WORKBANK_PRIOR` — a usable WORKBank match (HIGH/MEDIUM)
+3. `MATCHED_PUBLIC_PRIOR` — when `use_public_priors_for_scoring` is also on
+4. `EXISTING_HEURISTIC` — the built-in skill profile
+5. `DEFAULT_FALLBACK`
+
+WORKBank normalized fields map onto the 1–5 routing scores (`workbank_matching.workbank_scores`):
+`ai_capability_fit`←`avg_expert_ai_capability`; `human_judgment_need`←mean of the
+HAS values; `verification_ease`←inverse of `uncertainty_or_high_stakes_requirement`;
+`error_cost`←`uncertainty_or_high_stakes_requirement`; `context_sensitivity`←`domain_expertise_requirement`;
+`speed_value`←`avg_worker_automation_desire`; `collaboration_value`←HAS (peaking at
+mid agency); `repetition_level`←`task_type` (only when recognised, else not filled).
+Manual scores are never overwritten. Blend by match confidence: **HIGH** 80%
+WORKBank / 20% heuristic, **MEDIUM** 50/50, **LOW** ignored.
+
+Every WORKBank-influenced score carries full provenance: `field_name`, `value`,
+`source_type: MATCHED_WORKBANK_PRIOR`, `source_name: WORKBank`, `confidence`,
+`explanation`, `matched_workbank_task_id`, `matched_occupation_title`,
+`match_confidence`, and `blend_ratio` (when blended). Task routing responses also
+expose `workbank_scoring_enabled`, `matched_workbank_prior_used`,
+`workbank_match_confidence`, and a `workbank_warning` (MEDIUM blend, or toggle-on
+but no imported data). The **Use WORKBank for scoring** toggle lives under *Data
+and Settings*, and the routing **Why?** panel shows the source of each score
+(manual / WORKBank / public prior / heuristic / fallback) plus the matched
+WORKBank task, occupation, confidence, and blend ratio. **With the toggle off
+(the default) nothing changes.**
+
+#### Prior matching preview (preview only)
+
+`src/prior_matching.py` deterministically matches each project task to its
+**closest** public prior, purely for explanation — **the match is not used by
+routing, scoring, review/rework, Monte Carlo, the optimizer, or Project Mode.**
+Matching normalises the task text (lowercase, strip punctuation, drop a small
+stopword set, tokenize) and blends three deterministic signals: skill equality/
+overlap, a text score (token **Jaccard** + `difflib` sequence ratio), and an
+optional task-type match. The blended score maps to confidence: **HIGH ≥ 0.70,
+MEDIUM ≥ 0.45, else LOW**.
+
+- `POST /priors/match-tasks` returns a `PriorMatch` per task (`project_task_id`,
+  `matched_prior_id`, `matched_prior_type`, `matched_task_type`,
+  `matched_skill`, `match_score`, `match_confidence`, `match_method`,
+  `explanation`) plus up to three candidate matches.
+- `POST /simulate/project` task-routing records gain **informational-only**
+  `prior_match_preview`, `prior_match_confidence`, and `prior_match_explanation`
+  fields (added in the API layer; the simulation itself is untouched).
+- The **Evidence Priors** panel shows a **Matched Prior Preview** table for the
+  sample tasks, labelled *"Preview only. Not yet used for scoring."*
+
+#### Prior-backed scoring (opt-in, off by default)
+
+A config flag, **`use_public_priors_for_scoring`** (default **`false`**), lets
+matched public priors actually supply the routing suitability scores. **When it
+is false, all routing and scoring behaviour is exactly as before** (guaranteed
+and tested). When true, scores follow this override order:
+
+1. **MANUAL_INPUT** — a per-task `routing_scores` override (never overwritten)
+2. **MATCHED_PUBLIC_PRIOR** — from the closest matched `TaskRoutingPrior`
+3. **EXISTING_HEURISTIC** — the skill profile
+4. **DEFAULT_FALLBACK** — a neutral default
+
+Eight of the nine suitability scores can be prior-backed (`ai_capability_fit`,
+`human_judgment_need`, `verification_ease`, `error_cost`, `context_sensitivity`,
+`repetition_level`, `speed_value`, `collaboration_value`); `human_learning_value`
+has no prior and stays heuristic. The prior's 0–100 value is converted to the
+1–5 scale and **blended** with the heuristic by match confidence: **HIGH = 80%
+prior / 20% heuristic, MEDIUM = 50/50, LOW = ignored** (not used). Because the
+blended scores feed the routing rules, a route decision **may change — but only
+when the flag is on**.
+
+Every prior-backed score carries provenance with `source_type =
+MATCHED_PUBLIC_PRIOR`, plus `matched_prior_id`, `match_confidence`, and
+`blend_ratio`. Each task routing record also reports `public_priors_enabled`,
+`matched_prior_used`, `prior_match_confidence`, and a `prior_warning` when the
+match is MEDIUM. The flag is exposed in `GET`/`POST /config`, respected by
+`POST /route/tasks` and `POST /simulate/project`, toggled by a **"Use public
+priors for scoring"** checkbox in *Data and Settings*, and explained in each
+task's **"Why?"** panel (which shows the source, matched-prior confidence, and
+blend ratio).
+
+**Limitations:** priors are blended only where a heuristic profile exists;
+matched-prior selection uses the deterministic text matcher; values remain
+representative seeds, not calibrated data.
+
+### Historical calibration scaffold (informational only)
+
+`src/calibration.py` lets a user record the **actual** outcomes of a completed
+project and compare them to what the simulator predicted. It computes signed
+**error percentages** (duration, cost, human hours, review, rework), checks
+whether the **bottleneck** was predicted correctly, and **suggests** multiplier
+updates — `task_duration_multiplier`, `review_time_multiplier`,
+`rework_multiplier`, `dependency_buffer_multiplier`, `skill_gap_penalty`,
+`context_switching_penalty`. **These suggestions are informational and are never
+applied** — no scoring or simulation behaviour changes (every comparison carries
+`applied: false`). No ML, LLM, external API, or database: actuals live in a
+local, git-ignored JSON file.
+
+- `POST /calibration/actuals` — store a completed project's actuals and return
+  its comparison.
+- `POST /calibration/compare` — compare without storing.
+- `GET /calibration/summary` — aggregate mean-absolute errors, bottleneck
+  accuracy, and the biggest misses across all stored projects.
+
+A **Calibration** panel under *Data and Settings* provides a form for entering
+actuals, a prediction-vs-actual error table, the suggested multipliers, and the
+label *"Calibration suggestions are not applied automatically."*
+
+#### Manual calibration apply flow (opt-in, traceable)
+
+Building on the scaffold, users can **review and manually apply** suggested
+multiplier updates. Nothing is ever applied automatically — each proposal must
+be explicitly selected and applied.
+
+- `GET /calibration/proposals` — one `CalibrationUpdateProposal` per
+  calibration multiplier per stored project (`current_value`, `suggested_value`,
+  `reason`, `error_pct`, `confidence`, `applied`, `rejected`), plus the current
+  calibration config.
+- `POST /calibration/apply` — apply **only** the selected `proposal_ids`. Each
+  applied proposal updates one of the six calibration multipliers
+  (`task_duration_multiplier`, `review_time_multiplier`, `rework_multiplier`,
+  `dependency_buffer_multiplier`, `skill_gap_penalty`,
+  `context_switching_penalty`) and records provenance (`updated_by:
+  CALIBRATION_APPLY_FLOW`, `source_project_id`, `previous_value`, `new_value`,
+  `reason`). Returns applied vs skipped proposals and the updated config.
+- `POST /calibration/reject` — mark proposals rejected (no config change).
+
+The applied multipliers live in a **dedicated, git-ignored calibration config
+file** (`data/calibration/applied_config.json`) — separate from
+`scoring_weights.json` — so `POST /config` can never clobber them. Applying a
+proposal only updates the calibration **config values** (traceably); whether the
+engine then *consumes* them is governed by the consumption flag below.
+Calibration **cannot** touch source weights, public prior values, or the routing
+**decision rules** / task-matching logic — approved multipliers only scale the
+duration, review/rework, and risk *estimates* when consumption is enabled.
+
+The Calibration panel adds a proposals table (current vs suggested value,
+reason, confidence, a select checkbox), **Apply selected** / **Reject selected**
+buttons, and the warning *"Applying calibration updates may change future
+simulation outputs."*
+
+#### Calibration consumption (engine applies approved multipliers)
+
+Once multipliers are approved (above), the engine **consumes** them on future
+simulations:
+
+- `task_duration_multiplier` and `dependency_buffer_multiplier` scale each task's
+  scheduled duration (the latter only for tasks that have dependencies). Worker
+  cost and workload are unchanged — only the schedule/critical path shift.
+- `review_time_multiplier` and `rework_multiplier` scale the routing layer's
+  estimated review and rework hours (the routing **decision** is never changed),
+  and `net_ai_time_saved` is recomputed from the scaled values.
+- `skill_gap_penalty` and `context_switching_penalty` raise the risk score in
+  proportion to uncovered required skills and member overload, respectively.
+
+A tri-state config flag, **`use_calibration_multipliers`**, controls this:
+
+- `null` (default) — **auto**: enabled if an applied calibration config exists,
+  otherwise disabled. So with no approved multipliers, **behaviour is identical**
+  to before.
+- `true` — consume approved multipliers (still neutral if none applied).
+- `false` — ignore them **without deleting** the applied config.
+
+Every simulation response (`/simulate/project`, `/simulate/uncertainty`,
+`/route/tasks`) carries a calibration block: `calibration_multipliers_enabled`,
+`calibration_multipliers_applied` (the effective values), and
+`calibration_provenance` (per applied multiplier: `multiplier_name`, `value`,
+`source_project_id`, `previous_value`, `reason`, `updated_by`). `GET
+/calibration/active` reports the same block plus all current multiplier values
+and descriptions. The Calibration panel adds a **"Use approved calibration
+multipliers"** toggle, a read-only active-multipliers table, and the warning
+*"Approved calibration multipliers may change future simulation outputs."*
+
+Applied multipliers still live only in the **dedicated, git-ignored**
+`data/calibration/applied_config.json` — consumption never reads or changes
+source weights, public prior values, or the routing decision rules.
 
 #### Endpoints
 
@@ -127,8 +689,22 @@ scenario comparison. See [`frontend/README.md`](frontend/README.md) for details.
 | `GET /employees` | Employees loaded from `data/employees.csv` |
 | `GET /ai-agents` | AI agents loaded from `data/ai_agents.csv` |
 | `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
+| `GET /priors` | Loaded public evidence priors (representative seed; not yet wired to routing) |
+| `GET /priors/workbank` | Read-only normalized WORKBank import status + data (not connected to scoring) |
+| `POST /priors/workbank/match-tasks` | Closest WORKBank task per project task (preview only; not used for scoring) |
+| `POST /priors/match-tasks` | Closest-prior match per task (preview only; not used for scoring) |
+| `POST /calibration/actuals` | Store a completed project's actuals + return the comparison |
+| `POST /calibration/compare` | Compare actuals to predictions without storing |
+| `GET /calibration/summary` | Aggregate error summary + biggest misses across stored actuals |
+| `GET /calibration/proposals` | Multiplier-update proposals from stored actuals (nothing applied) |
+| `POST /calibration/apply` | Apply only the selected proposals to the calibration config (traceable) |
+| `POST /calibration/reject` | Mark selected proposals rejected (no config change) |
+| `GET /calibration/active` | Active approved multipliers the engine is consuming (toggle state + provenance) |
 | `POST /simulate` | Run the full engine; returns the top 5 ranked teams (and writes `outputs/`) |
 | `POST /simulate/manual-team` | Simulate one chosen team (`human_names` + `ai_agent_names`); full result |
+| `POST /simulate/project` | **Project Mode** — compare staffing options for a JSON project scenario (see above) |
+| `POST /simulate/uncertainty` | **Monte Carlo** — P10/P50/P90 duration & cost + deadline/budget probabilities for a team |
+| `POST /route/tasks` | **Task routing** — human/AI routing table + summary for a set of tasks |
 | `POST /upload/employees` | Replace `employees.csv` from a validated CSV upload |
 | `POST /upload/ai-agents` | Replace `ai_agents.csv` from a validated CSV upload |
 | `POST /upload/tasks` | Replace `project_tasks.csv` from a validated CSV upload |

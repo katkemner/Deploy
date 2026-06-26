@@ -1,0 +1,61 @@
+# Render Blueprint for the Workforce Simulator MVP (STAGING).
+#
+# Deploys two services from this monorepo:
+#   1. workforce-simulator-api  — FastAPI backend (Render Web Service)
+#   2. workforce-simulator-web  — Vite/React frontend (Render Static Site)
+#
+# See workforce_simulator/docs/deployment.md for exact setup steps.
+#
+# STAGING ONLY: there is no auth, access control, persistent database, or
+# tenant isolation. Do not enter sensitive company data.
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend: FastAPI app served by uvicorn. Code lives in workforce_simulator/;
+  # the existing engine is unchanged — this only wraps how it starts in Render.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: workforce-simulator-api
+    runtime: python
+    plan: free
+    rootDir: workforce_simulator
+    buildCommand: pip install -r requirements.txt
+    # $PORT is provided by Render; bind 0.0.0.0 so the service is reachable.
+    startCommand: uvicorn src.api.app:app --host 0.0.0.0 --port $PORT
+    # Render polls this existing endpoint to know the service is healthy.
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # OPTIONAL: comma-separated list of allowed browser origins for CORS.
+      # Leave it unset for staging — the code then defaults to "*", which lets
+      # the frontend (any URL) call the API with no manual setup. To lock the
+      # API down to just the frontend later, add this variable in the Render
+      # dashboard set to the static site's URL. A bare hostname is accepted and
+      # treated as https://. (Kept out of the Blueprint so there's nothing to
+      # fill in for a one-click staging deploy.)
+
+  # ---------------------------------------------------------------------------
+  # Frontend: static build output (dist/) from Vite. The API base URL is baked
+  # in at build time via VITE_API_BASE_URL.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: workforce-simulator-web
+    runtime: static
+    rootDir: workforce_simulator/frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      # The backend's PUBLIC URL, baked into the frontend build by Vite.
+      # NOTE: Render's `fromService` host property returns the service's private
+      # hostname (the bare service name), which a browser cannot reach — so this
+      # is set to the public https URL explicitly. It follows the pattern
+      # https://<api-service-name>.onrender.com; update it if you rename the
+      # backend service or add a custom domain.
+      - key: VITE_API_BASE_URL
+        value: https://workforce-simulator-api.onrender.com
+    # Single-page app: serve index.html for any path.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

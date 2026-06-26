@@ -13,20 +13,35 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile, File
 
 # Engine modules (importable thanks to the path setup in ``api/__init__``).
+import calibration
 import config_loader
 import data_loader
 import exporter
+import montecarlo
 import optimizer
+import prior_matching
+import priors
+import project_mode
+import routing
+import workbank
+import workbank_matching
 from models import Team
 
 from .schemas import (
     AIAgent,
     Employee,
+    CalibrationApplyRequest,
+    CalibrationRejectRequest,
     HealthResponse,
+    HistoricalProjectActualInput,
     ManualTeamRequest,
+    MatchTasksRequest,
+    ProjectScenarioRequest,
     ProjectTask,
+    RouteTasksRequest,
     ScoringConfig,
     SimulationResult,
+    UncertaintyRequest,
 )
 
 router = APIRouter()
@@ -44,6 +59,12 @@ RESULTS_JSON = os.path.join(OUTPUT_DIR, "results.json")
 EMPLOYEES_CSV = os.path.join(DATA_DIR, "employees.csv")
 AI_AGENTS_CSV = os.path.join(DATA_DIR, "ai_agents.csv")
 TASKS_CSV = os.path.join(DATA_DIR, "project_tasks.csv")
+PRIORS_PATH = os.path.join(DATA_DIR, "priors", "public_priors_seed.json")
+WORKBANK_IMPORT_DIR = os.path.join(DATA_DIR, "imports", "workbank")
+WORKBANK_NORMALIZED = os.path.join(DATA_DIR, "priors", "workbank_normalized.json")
+CALIBRATION_STORE = os.path.join(DATA_DIR, "calibration", "actuals.json")
+CALIBRATION_CONFIG = os.path.join(DATA_DIR, "calibration", "applied_config.json")
+CALIBRATION_STATE = os.path.join(DATA_DIR, "calibration", "proposal_state.json")
 
 # Required columns for upload validation.
 EMPLOYEE_COLUMNS = [
@@ -60,6 +81,19 @@ TASK_COLUMNS = ["task", "required_skill", "effort_hours", "priority"]
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+
+def _active_calibration(config) -> dict:
+    """Resolve the approved calibration to apply for this request.
+
+    Reads the applied calibration config and the config's tri-state
+    ``use_calibration_multipliers`` flag. When no applied config exists (or the
+    flag is false) this is disabled and ``engine_multipliers`` is ``None``, so
+    the simulation behaves exactly as it did before calibration consumption.
+    """
+    return calibration.active_calibration(
+        CALIBRATION_CONFIG, getattr(config, "use_calibration_multipliers", None)
+    )
+
 
 def _worker_to_employee(w) -> Employee:
     return Employee(
@@ -177,6 +211,168 @@ def get_tasks() -> List[ProjectTask]:
     ]
 
 
+@router.get("/priors", tags=["data"])
+def get_priors() -> dict:
+    """Return the loaded public evidence priors (foundation only).
+
+    These are representative seed values and are **not yet connected** to
+    routing or scoring. Returns ``source_weights``, ``evidence_priors``,
+    ``task_routing_priors``, and ``hybrid_guardrail_priors``.
+    """
+    try:
+        bundle = priors.load_priors(PRIORS_PATH)
+    except priors.PriorsError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return bundle.to_dict()
+
+
+@router.post("/priors/match-tasks", tags=["data"])
+def match_tasks(request: MatchTasksRequest) -> dict:
+    """Match each project task to its closest public prior (PREVIEW ONLY).
+
+    Returns one ``PriorMatch`` per task (with up to three candidate matches).
+    This is informational - the match is NOT used by routing, scoring, or any
+    simulation.
+    """
+    try:
+        bundle = priors.load_priors(PRIORS_PATH)
+    except priors.PriorsError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    task_dicts = [t.model_dump() for t in request.tasks]
+    return {"matches": prior_matching.match_tasks(task_dicts, bundle)}
+
+
+@router.get("/priors/workbank", tags=["data"])
+def get_workbank_priors() -> dict:
+    """Return the read-only normalized WORKBank import status + data.
+
+    Imports the three WORKBank CSVs from ``data/imports/workbank/`` when present
+    (writing ``data/priors/workbank_normalized.json``), else falls back to a
+    previously imported file, else reports ``not_imported``. The normalized
+    WORKBank data is **NOT connected to routing, scoring, or any simulation** -
+    it is exposed here read-only. Returns ``import_status``, ``task_count``,
+    ``occupation_count``, ``normalized_priors``, and ``validation_warnings``.
+    """
+    return workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
+
+
+@router.post("/priors/workbank/match-tasks", tags=["data"])
+def match_workbank_tasks(request: MatchTasksRequest) -> dict:
+    """Match each project task to its closest imported WORKBank task (PREVIEW).
+
+    Returns one ``WorkbankTaskMatch`` per task (with up to three candidate
+    matches). This is informational - the match is NOT used by routing,
+    scoring, calibration, Pareto, Monte Carlo, or any recommendation. When no
+    WORKBank data has been imported, each task reports a LOW, unmatched result.
+    """
+    normalized = workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
+    task_dicts = [t.model_dump() for t in request.tasks]
+    return {
+        "import_status": normalized.get("import_status"),
+        "matches": workbank_matching.match_tasks(task_dicts, normalized),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Calibration (historical actuals vs predictions) - informational only
+# ---------------------------------------------------------------------------
+
+@router.post("/calibration/actuals", tags=["calibration"])
+def submit_actuals(request: HistoricalProjectActualInput) -> dict:
+    """Record a completed project's actual outcomes and compare to predictions.
+
+    Stores the actuals locally and returns the comparison. Suggested multiplier
+    updates are informational and are NOT applied to scoring or simulation.
+    """
+    data = request.model_dump()
+    try:
+        calibration.validate_actual(data)
+    except calibration.CalibrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    calibration.save_actual(CALIBRATION_STORE, data)
+    return {"stored": True, "comparison": calibration.compare(data).to_dict()}
+
+
+@router.post("/calibration/compare", tags=["calibration"])
+def compare_actuals(request: HistoricalProjectActualInput) -> dict:
+    """Compare actuals to predictions WITHOUT storing. Informational only."""
+    data = request.model_dump()
+    try:
+        calibration.validate_actual(data)
+    except calibration.CalibrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return calibration.compare(data).to_dict()
+
+
+@router.get("/calibration/summary", tags=["calibration"])
+def calibration_summary() -> dict:
+    """Aggregate error summary + biggest misses across all stored actuals."""
+    return calibration.summarize(CALIBRATION_STORE)
+
+
+@router.get("/calibration/proposals", tags=["calibration"])
+def calibration_proposals() -> dict:
+    """Update proposals derived from stored actuals (none applied automatically).
+
+    Each proposal shows the current vs suggested multiplier value, the reason,
+    error %, confidence, and whether it has been applied/rejected.
+    """
+    proposals = calibration.all_proposals(
+        CALIBRATION_STORE, CALIBRATION_CONFIG, CALIBRATION_STATE
+    )
+    cfg = calibration.load_calibration_config(CALIBRATION_CONFIG)
+    return {
+        "proposals": proposals,
+        "current_config": cfg["multipliers"],
+        "note": "Proposals are suggestions; nothing is applied until you explicitly apply it.",
+    }
+
+
+@router.get("/calibration/active", tags=["calibration"])
+def calibration_active() -> dict:
+    """Report which approved calibration multipliers the engine is consuming.
+
+    Reflects the current config's ``use_calibration_multipliers`` flag against
+    the applied calibration config. Drives the Calibration panel's toggle,
+    active-multipliers table, and provenance display. When no applied config
+    exists (or the flag is off) this is disabled and simulations are unaffected.
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    active = _active_calibration(config)
+    cfg = calibration.load_calibration_config(CALIBRATION_CONFIG)
+    return {
+        "config_exists": active["config_exists"],
+        "use_calibration_multipliers": config.use_calibration_multipliers,
+        "multipliers": cfg["multipliers"],
+        "descriptions": calibration.MULTIPLIER_DESCRIPTIONS,
+        "warning": (
+            "Approved calibration multipliers may change future simulation outputs."
+        ),
+        **active["response"],
+    }
+
+
+@router.post("/calibration/apply", tags=["calibration"])
+def calibration_apply(request: CalibrationApplyRequest) -> dict:
+    """Apply ONLY the selected proposals to the calibration config (traceable).
+
+    Updates the six calibration multipliers, records provenance
+    (updated_by=CALIBRATION_APPLY_FLOW), and marks the proposals applied.
+    """
+    return calibration.apply_proposals(
+        request.proposal_ids, request.apply_notes,
+        CALIBRATION_STORE, CALIBRATION_CONFIG, CALIBRATION_STATE,
+    )
+
+
+@router.post("/calibration/reject", tags=["calibration"])
+def calibration_reject(request: CalibrationRejectRequest) -> dict:
+    """Mark the selected proposals rejected (no config change)."""
+    return calibration.reject_proposals(
+        request.proposal_ids, CALIBRATION_STORE, CALIBRATION_STATE
+    )
+
+
 # ---------------------------------------------------------------------------
 # Simulation
 # ---------------------------------------------------------------------------
@@ -186,7 +382,11 @@ def simulate() -> List[dict]:
     """Run the full engine on the current CSV data + config; top 5 teams."""
     config = config_loader.load_config(CONFIG_PATH)
     employees, ai_agents, tasks = data_loader.load_all(DATA_DIR)
-    results = optimizer.rank_teams(employees, ai_agents, tasks, config, top_n=5)
+    active = _active_calibration(config)
+    results = optimizer.rank_teams(
+        employees, ai_agents, tasks, config, top_n=5,
+        calibration=active["engine_multipliers"],
+    )
 
     # Persist outputs so ``GET /outputs/latest`` reflects this run.
     exporter.export_json(results, RESULTS_JSON)
@@ -225,8 +425,184 @@ def simulate_manual_team(request: ManualTeamRequest) -> dict:
         humans=[humans_by_name[n] for n in request.human_names],
         ai_agents=[ais_by_name[n] for n in request.ai_agent_names],
     )
-    result = optimizer.simulate_single_team(team, tasks, config)
+    active = _active_calibration(config)
+    result = optimizer.simulate_single_team(
+        team, tasks, config, calibration=active["engine_multipliers"]
+    )
     return exporter.result_to_dict(result)
+
+
+@router.post("/simulate/project", tags=["simulate"])
+def simulate_project(request: ProjectScenarioRequest) -> dict:
+    """Project Mode: compare staffing options for a project scenario.
+
+    Uses the current employees/AI agents from CSV and the tasks supplied in
+    the request body (project_tasks.csv is NOT read or overwritten). Returns
+    the five decision options, a comparison table, and a deterministic
+    recommendation summary.
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    # Current employees + AI agents come from CSV; tasks come from the request.
+    employees = data_loader.load_employees(EMPLOYEES_CSV)
+    ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
+    task_dicts = [t.model_dump() for t in request.tasks]
+    bindings = (
+        _prior_bindings(task_dicts)
+        if config.use_public_priors_for_scoring else None
+    )
+    use_workbank = config.use_workbank_for_scoring
+    wb_bindings, wb_present = (
+        _workbank_bindings(task_dicts) if use_workbank else (None, False)
+    )
+    active = _active_calibration(config)
+    try:
+        response = project_mode.run_project_simulation(
+            employees, ai_agents, request.model_dump(), config,
+            prior_bindings=bindings, calibration=active["engine_multipliers"],
+            workbank_bindings=wb_bindings, use_workbank=use_workbank,
+        )
+    except project_mode.ProjectModeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if use_workbank and not wb_present:
+        response["workbank_warning"] = (
+            "WORKBank scoring is enabled but no imported WORKBank data is "
+            "available; scores fall back to public priors / heuristics.")
+
+    # Additive, informational-only prior-match preview. This does NOT affect
+    # any routing/scoring/recommendation produced above - it only annotates the
+    # task_routing records with the closest matching prior.
+    _attach_prior_match_preview(response, [t.model_dump() for t in request.tasks])
+    # Additive, informational-only WORKBank match preview (read-only; never used
+    # for routing/scoring/recommendations).
+    _attach_workbank_match_preview(response, [t.model_dump() for t in request.tasks])
+    # Surface which approved calibration multipliers shaped this run (if any).
+    response.update(active["response"])
+    return response
+
+
+def _attach_workbank_match_preview(response: dict, task_dicts: list) -> None:
+    """Add a read-only ``workbank_match_preview`` to each task_routing row.
+
+    Best-effort and side-effect free with respect to the simulation: the match
+    is informational and changes no routing/scoring/recommendation. When no
+    WORKBank data is imported, each row's preview reports an unmatched, LOW
+    result rather than failing.
+    """
+    normalized = workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
+    matches = workbank_matching.match_tasks(task_dicts, normalized)
+    by_task = {m["project_task_id"]: m for m in matches}
+    for row in response.get("task_routing", []):
+        m = by_task.get(row.get("task"))
+        if m is None:
+            continue
+        row["workbank_match_preview"] = {
+            "matched_workbank_task_id": m["matched_workbank_task_id"],
+            "matched_task_text": m["matched_task_text"],
+            "matched_occupation_title": m["matched_occupation_title"],
+            "matched_task_type": m["matched_task_type"],
+            "match_score": m["match_score"],
+            "match_confidence": m["match_confidence"],
+            "explanation": m["explanation"],
+        }
+
+
+def _attach_prior_match_preview(response: dict, task_dicts: list) -> None:
+    """Add prior_match_preview/confidence/explanation to each task_routing row.
+
+    Best-effort and side-effect free with respect to the simulation: if priors
+    cannot be loaded the response is returned unchanged.
+    """
+    try:
+        bundle = priors.load_priors(PRIORS_PATH)
+    except priors.PriorsError:
+        return
+    matches = prior_matching.match_tasks(task_dicts, bundle)
+    by_task = {m["project_task_id"]: m for m in matches}
+    for row in response.get("task_routing", []):
+        m = by_task.get(row.get("task"))
+        if m:
+            row["prior_match_preview"] = m["matched_prior_id"]
+            row["prior_match_confidence"] = m["match_confidence"]
+            row["prior_match_explanation"] = m["explanation"]
+
+
+@router.post("/simulate/uncertainty", tags=["simulate"])
+def simulate_uncertainty(request: UncertaintyRequest) -> dict:
+    """Monte-Carlo uncertainty analysis for a team and a set of tasks.
+
+    Samples each task's effort from a triangular (optimistic/likely/
+    pessimistic) range and runs the real scheduler ``iterations`` times,
+    returning P10/P50/P90 duration and cost plus the empirical probability of
+    meeting the deadline/budget. Reproducible for a fixed ``seed``.
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    employees = data_loader.load_employees(EMPLOYEES_CSV)
+    ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
+    active = _active_calibration(config)
+    try:
+        response = montecarlo.run_uncertainty(
+            employees, ai_agents, request.model_dump(), config,
+            calibration=active["engine_multipliers"],
+        )
+    except project_mode.ProjectModeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    response.update(active["response"])
+    return response
+
+
+@router.post("/route/tasks", tags=["routing"])
+def route_tasks(request: RouteTasksRequest) -> dict:
+    """Task-level human/AI routing for a set of tasks (no team required).
+
+    Returns the routing decision, 1-5 suitability scores, explanation, and
+    review/rework/AI-time estimates per task, plus project-level totals. When
+    ``use_public_priors_for_scoring`` is enabled in the config, matched public
+    priors may supply/blend the suitability scores (with full provenance).
+    """
+    config = config_loader.load_config(CONFIG_PATH)
+    use_priors = config.use_public_priors_for_scoring
+    use_workbank = config.use_workbank_for_scoring
+    task_dicts = [t.model_dump() for t in request.tasks]
+    bindings = _prior_bindings(task_dicts) if use_priors else None
+    wb_bindings, wb_present = _workbank_bindings(task_dicts) if use_workbank else (None, False)
+    active = _active_calibration(config)
+    records = routing.route_tasks(
+        task_dicts, bindings=bindings, use_priors=use_priors,
+        calibration=active["engine_multipliers"],
+        workbank_bindings=wb_bindings, use_workbank=use_workbank,
+    )
+    out = {
+        "public_priors_enabled": use_priors,
+        "workbank_scoring_enabled": use_workbank,
+        "task_routing": records,
+        "routing_summary": routing.summarize_routing(records),
+        **active["response"],
+    }
+    if use_workbank and not wb_present:
+        out["workbank_warning"] = (
+            "WORKBank scoring is enabled but no imported WORKBank data is "
+            "available; scores fall back to public priors / heuristics.")
+    return out
+
+
+def _prior_bindings(task_dicts: list):
+    """Build prior-score bindings for tasks, or None if priors can't load."""
+    try:
+        bundle = priors.load_priors(PRIORS_PATH)
+    except priors.PriorsError:
+        return None
+    return prior_matching.build_score_bindings(task_dicts, bundle)
+
+
+def _workbank_bindings(task_dicts: list):
+    """Build WORKBank score bindings for tasks. Returns (bindings, data_present).
+
+    ``data_present`` is True only when imported WORKBank data actually exists,
+    so callers can warn when the toggle is on but nothing was imported.
+    """
+    normalized = workbank.workbank_status(WORKBANK_IMPORT_DIR, WORKBANK_NORMALIZED)
+    present = bool(normalized.get("normalized_priors"))
+    return workbank_matching.build_score_bindings(task_dicts, normalized), present
 
 
 # ---------------------------------------------------------------------------

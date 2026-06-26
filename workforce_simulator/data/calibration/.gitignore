@@ -1,0 +1,4 @@
+# User-submitted calibration data is local, not committed.
+actuals.json
+applied_config.json
+proposal_state.json

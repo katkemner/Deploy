@@ -20,6 +20,8 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 import scoring        # noqa: E402
 import scheduler      # noqa: E402
+import routing        # noqa: E402
+import montecarlo     # noqa: E402
 from data_loader import load_all                      # noqa: E402
 from config_loader import load_config, SimConfig      # noqa: E402
 from models import Worker, Task, Team, Assignment, HUMAN, AI_AGENT  # noqa: E402
@@ -282,6 +284,251 @@ def test_generate_teams_respects_config_limits():
     for t in teams:
         assert len(t.humans) == 3
         assert 0 <= len(t.ai_agents) <= 1
+
+
+# ---------------------------------------------------------------------------
+# 9. Task-level human/AI routing
+# ---------------------------------------------------------------------------
+
+def test_routing_ai_only_for_highly_automatable_task():
+    # Writing/Documentation: high AI fit, repetitive, easy verify, low stakes.
+    t = Task("Docs", "Writing", 15, 3, [], is_required=False)
+    rec = routing.route_task(t)
+    assert rec["routing"] == routing.AI_ONLY
+    assert rec["explanation"]
+
+
+def test_routing_human_only_for_high_stakes_task():
+    # Strategy: heavy judgment, high error cost & context, hard to verify.
+    t = Task("Strategy", "Strategy", 15, 1, [], is_required=True)
+    rec = routing.route_task(t)
+    assert rec["routing"] == routing.HUMAN_ONLY
+    # No AI involvement -> no review or rework burden.
+    assert rec["review_hours"] == 0.0
+    assert rec["expected_rework_hours"] == 0.0
+
+
+def test_routing_escalates_unknown_skill():
+    t = Task("Mystery", "Quantum", 10, 1, [], is_required=True)
+    rec = routing.route_task(t)
+    assert rec["routing"] == routing.ESCALATE
+    # Scores are unknown for an unprofiled skill.
+    assert all(v is None for v in rec["scores"].values())
+
+
+def test_routing_score_override_is_respected():
+    # Force a HUMAN_ONLY profile via explicit scores on an otherwise AI skill.
+    scores = {f: 3 for f in routing.SCORE_FIELDS}
+    scores.update(error_cost=5, verification_ease=1, context_sensitivity=5,
+                  human_judgment_need=5, ai_capability_fit=1)
+    t = {"task": "X", "required_skill": "Writing", "effort_hours": 10,
+         "priority": 1, "is_required": True, "routing_scores": scores}
+    rec = routing.route_task(t)
+    assert rec["routing"] == routing.HUMAN_ONLY
+
+
+def test_routing_summary_totals_and_net():
+    _, _, tasks = load_all(DATA_DIR)
+    records = routing.route_tasks(tasks)
+    summary = routing.summarize_routing(records)
+    # Totals are the sum of the per-task estimates.
+    assert summary["total_review_hours"] == round(
+        sum(r["review_hours"] for r in records), 2
+    )
+    # net = saved - review - rework.
+    assert summary["net_ai_time_saved"] == round(
+        summary["total_ai_time_saved"]
+        - summary["total_review_hours"]
+        - summary["total_expected_rework_hours"],
+        2,
+    )
+    assert summary["ai_saves_time"] == (summary["net_ai_time_saved"] > 0)
+
+
+def test_reviewer_burden_zero_without_ai():
+    employees, _, tasks = load_all(DATA_DIR)
+    records = routing.route_tasks(tasks)
+    humans = employees[:3]
+    no_ai = routing.reviewer_burden_for_team(records, humans, has_ai=False)
+    assert no_ai["review_burden_hours"] == 0.0
+    assert no_ai["reviewer_bottleneck"]["is_bottleneck"] is False
+    # With AI there is a real burden.
+    with_ai = routing.reviewer_burden_for_team(records, humans, has_ai=True)
+    assert with_ai["review_burden_hours"] > 0.0
+
+
+# ---------------------------------------------------------------------------
+# 10. Monte-Carlo uncertainty
+# ---------------------------------------------------------------------------
+
+def _mc_request(**overrides):
+    _, _, tasks = load_all(DATA_DIR)
+    req = {
+        "tasks": [
+            {"task": t.task, "required_skill": t.required_skill,
+             "effort_hours": t.effort_hours, "priority": t.priority,
+             "dependencies": t.dependencies, "is_required": t.is_required}
+            for t in tasks
+        ],
+        "human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],
+        "ai_agent_names": ["AI Research Agent", "AI QA Reviewer"],
+        "iterations": 200,
+        "seed": 42,
+    }
+    req.update(overrides)
+    return req
+
+
+def test_montecarlo_percentiles_are_ordered():
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    r = montecarlo.run_uncertainty(employees, ai_agents, _mc_request(), config)
+    for key in ("duration", "cost"):
+        s = r[key]
+        assert s["min"] <= s["p10"] <= s["p50"] <= s["p90"] <= s["max"]
+
+
+def test_montecarlo_is_reproducible_with_seed():
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    r1 = montecarlo.run_uncertainty(employees, ai_agents, _mc_request(seed=7), config)
+    r2 = montecarlo.run_uncertainty(employees, ai_agents, _mc_request(seed=7), config)
+    assert r1["duration"] == r2["duration"]
+    assert r1["cost"] == r2["cost"]
+    # A different seed should change the sampled outcome.
+    r3 = montecarlo.run_uncertainty(employees, ai_agents, _mc_request(seed=99), config)
+    assert (r3["duration"]["p50"], r3["duration"]["p90"]) != (
+        r1["duration"]["p50"], r1["duration"]["p90"]
+    )
+
+
+def test_montecarlo_probabilities_in_range():
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    r = montecarlo.run_uncertainty(
+        employees, ai_agents,
+        _mc_request(deadline_target_hours=110, budget_target=20000), config
+    )
+    assert 0.0 <= r["probability_meets_deadline"] <= 1.0
+    assert 0.0 <= r["probability_within_budget"] <= 1.0
+
+
+def test_montecarlo_zero_range_is_degenerate():
+    # Optimistic == likely == pessimistic -> every iteration is identical, so
+    # the distribution collapses to the baseline (std 0).
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    req = _mc_request(default_low_factor=1.0, default_high_factor=1.0)
+    r = montecarlo.run_uncertainty(employees, ai_agents, req, config)
+    assert r["duration"]["std"] == 0.0
+    assert r["duration"]["p50"] == r["baseline"]["duration"]
+
+
+def test_montecarlo_rejects_unknown_member():
+    employees, ai_agents, _ = load_all(DATA_DIR)
+    config = load_config(CONFIG_PATH)
+    try:
+        montecarlo.run_uncertainty(
+            employees, ai_agents, _mc_request(human_names=["Ghost"]), config
+        )
+        assert False, "expected ProjectModeError"
+    except montecarlo.ProjectModeError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Score / routing provenance (additive metadata; changes no value or decision)
+# ---------------------------------------------------------------------------
+
+import provenance  # noqa: E402
+
+PROVENANCE_KEYS = {
+    "field_name", "value", "source_type", "source_name", "confidence", "explanation",
+}
+ROUTE_PROV_FIELDS = {
+    "recommended_route", "estimated_review_hours",
+    "expected_rework_hours", "net_ai_time_saved",
+}
+
+
+def test_routing_record_includes_provenance():
+    t = Task("Docs", "Writing", 15, 3, [], is_required=False)
+    rec = routing.route_task(t)
+    assert len(rec["score_provenance"]) == len(routing.SCORE_FIELDS)
+    assert len(rec["route_provenance"]) == 4
+    # Score provenance covers exactly the nine suitability scores.
+    assert {p["field_name"] for p in rec["score_provenance"]} == set(routing.SCORE_FIELDS)
+    # Route provenance covers the route + the three derived estimates.
+    assert {p["field_name"] for p in rec["route_provenance"]} == ROUTE_PROV_FIELDS
+
+
+def test_every_provenance_item_is_well_formed():
+    _, _, tasks = load_all(DATA_DIR)
+    for t in tasks:
+        rec = routing.route_task(t)
+        for p in rec["score_provenance"] + rec["route_provenance"]:
+            assert set(p.keys()) == PROVENANCE_KEYS
+            assert p["source_type"] in provenance.VALID_SOURCE_TYPES
+            assert 0.0 <= p["confidence"] <= 1.0
+
+
+def test_provenance_confidence_is_deterministic_by_source():
+    assert provenance.item("f", 1, provenance.MANUAL_INPUT, "n", "e")["confidence"] == 0.95
+    assert provenance.item("f", 1, provenance.EXISTING_HEURISTIC, "n", "e")["confidence"] == 0.7
+    assert provenance.item("f", 1, provenance.DEFAULT_FALLBACK, "n", "e")["confidence"] == 0.3
+
+
+def test_known_skill_scores_are_heuristic():
+    t = Task("Docs", "Writing", 15, 3, [], is_required=False)
+    rec = routing.route_task(t)
+    assert all(
+        p["source_type"] == provenance.EXISTING_HEURISTIC
+        for p in rec["score_provenance"]
+    )
+    route = next(p for p in rec["route_provenance"] if p["field_name"] == "recommended_route")
+    assert route["source_type"] == provenance.EXISTING_HEURISTIC
+
+
+def test_manual_override_provenance():
+    t = {"task": "X", "required_skill": "Writing", "effort_hours": 10,
+         "priority": 1, "is_required": True,
+         "routing_scores": {"ai_capability_fit": 5, "error_cost": 1}}
+    rec = routing.route_task(t)
+    by_field = {p["field_name"]: p for p in rec["score_provenance"]}
+    assert by_field["ai_capability_fit"]["source_type"] == provenance.MANUAL_INPUT
+    assert by_field["error_cost"]["source_type"] == provenance.MANUAL_INPUT
+    # A field not in the override falls back to the default.
+    assert by_field["verification_ease"]["source_type"] == provenance.DEFAULT_FALLBACK
+
+
+def test_unknown_skill_provenance_is_default_fallback():
+    t = Task("Mystery", "Quantum", 10, 1, [], is_required=True)
+    rec = routing.route_task(t)
+    assert rec["routing"] == routing.ESCALATE
+    assert all(
+        p["source_type"] == provenance.DEFAULT_FALLBACK for p in rec["score_provenance"]
+    )
+    route = next(p for p in rec["route_provenance"] if p["field_name"] == "recommended_route")
+    assert route["source_type"] == provenance.DEFAULT_FALLBACK
+
+
+def test_provenance_does_not_change_existing_route_decisions():
+    # The routing decisions for the sample tasks must be exactly what the engine
+    # produced before provenance was added.
+    _, _, tasks = load_all(DATA_DIR)
+    decisions = {r["task"]: r["routing"] for r in routing.route_tasks(tasks)}
+    assert decisions["Documentation"] == routing.AI_ONLY
+    assert decisions["Product strategy"] == routing.HUMAN_ONLY
+    assert decisions["User research"] == routing.AI_FIRST_HUMAN_REVIEW
+    assert decisions["Backend API"] == routing.HUMAN_FIRST_AI_ASSIST
+
+
+def test_net_ai_time_saved_field():
+    _, _, tasks = load_all(DATA_DIR)
+    rec = routing.route_task(tasks[0])
+    assert rec["net_ai_time_saved"] == round(
+        rec["ai_time_saved"] - rec["review_hours"] - rec["expected_rework_hours"], 2
+    )
 
 
 # Allow running directly without pytest.

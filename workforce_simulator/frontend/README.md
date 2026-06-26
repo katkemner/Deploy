@@ -35,8 +35,47 @@ Open the app at **http://localhost:5173**.
 
 ## What you can do
 
+- **Project Mode (primary flow):** describe a project (goal, deadline/budget
+  targets, objective), edit tasks in the Project Task Builder (preloaded with
+  the 10 sample tasks), pick your Current Team with a live coverage preview, and
+  **Run Project Simulation** to compare five staffing options (Current,
+  AI-Assisted Current, Recommended Balanced, Fastest, Lowest-Cost) with a
+  recommendation summary and comparison table.
+- **Task routing (human vs AI):** each task gets a routing recommendation
+  (AI_ONLY / AI_FIRST_HUMAN_REVIEW / HUMAN_FIRST_AI_ASSIST / HUMAN_ONLY /
+  ESCALATE) with 1–5 suitability scores, review/rework-hour estimates, and an
+  explanation. The comparison table shows review burden, rework, net AI hours,
+  and a reviewer-bottleneck flag; the recommendation says whether AI actually
+  saves time or just shifts work to reviewers. Use **Preview task routing** to
+  see the table before running a full simulation.
+- **Uncertainty analysis (Monte Carlo):** for the selected current team, runs
+  the scheduler hundreds of times over per-task effort ranges and shows
+  P10/P50/P90 duration & cost, deadline/budget probabilities, and a duration
+  histogram. Reproducible via a seed.
+- **Routing provenance (“Why?”):** each routed task has an expandable **Why?**
+  panel showing, for every score and routing output, where it came from
+  (manual input / matched public prior / built-in heuristic / default fallback),
+  with a source name, confidence, and explanation.
+- **Prior-backed scoring toggle (opt-in):** a *Use public priors for scoring*
+  checkbox in *Data and Settings* (off by default). When on, matched public
+  priors supply/blend the routing scores; the **Why?** panel shows the matched
+  prior, its confidence, and the blend ratio, with a warning when MEDIUM.
+- **Evidence Priors (read-only):** under *Data and Settings*, a panel lists the
+  loaded public evidence-prior sources (name, type, weight, confidence) and
+  counts, clearly marked *representative seed* and *not yet connected to
+  routing*. It also shows a **Matched Prior Preview** — each sample task's
+  closest prior with confidence, score, and explanation — labelled *"Preview
+  only. Not yet used for scoring."*
+- **Calibration (read/enter actuals + manual apply):** a panel under *Data and
+  Settings* to enter a completed project's actual outcomes and see a
+  prediction-vs-actual error table. It also lists suggested multiplier-update
+  **proposals** (current vs suggested value, reason, confidence) with select
+  checkboxes and **Apply selected** / **Reject selected** buttons — nothing is
+  applied automatically, with the warning *"Applying calibration updates may
+  change future simulation outputs."*
 - See live **API health** in the header.
-- Browse **employees, AI agents, and project tasks** loaded from the backend.
+- Under **Data and Settings** (collapsible, secondary): browse employees, AI
+  agents, and project tasks loaded from the backend.
 - **Upload** replacement CSVs (validated by the backend; the relevant table
   refreshes on success, errors are shown inline).
 - Edit and save the **scoring config** (weights, required-coverage rule, team
@@ -70,7 +109,14 @@ frontend/
         ├── ManualTeamBuilder.jsx
         ├── SimulationResults.jsx
         ├── TaskScheduleTable.jsx
-        └── ScenarioComparison.jsx
+        ├── ScenarioComparison.jsx
+        ├── ProjectMode.jsx          # primary Project Mode flow
+        ├── ProjectTaskBuilder.jsx   # add/edit/delete tasks
+        ├── CurrentTeamSelector.jsx  # pick team + coverage preview
+        ├── RecommendationSummary.jsx
+        ├── ProjectComparisonTable.jsx
+        ├── RoutingTable.jsx         # task-level human/AI routing table
+        └── UncertaintyPanel.jsx     # Monte-Carlo P10/P50/P90 + probabilities
 ```
 
 ## Build / checks
@@ -88,14 +134,31 @@ key paths.
 
 With both servers running, confirm:
 
-1. The app loads and the header shows **API: ok**.
-2. Employees, AI agents, and tasks tables populate.
-3. **Run Full Simulation** returns 5 ranked team cards.
-4. **Manual Team Builder** → "Fill current best team" (Sarah, Maya, Priya,
-   Alex, Casey + AI Research Agent, AI QA Reviewer) → **Run** shows a valid
-   team with 100% required coverage and a critical path.
-5. Selecting **Compare** on two cards shows the comparison table.
-6. Editing a weight and clicking **Save Config** shows "Config saved";
-   entering a negative weight shows a validation error.
-7. Uploading a malformed CSV shows a validation error; re-uploading a valid
-   file shows a success message and refreshes the table.
+**Project Mode (primary):**
+
+1. The app loads with **Project Mode** as the first section and the header
+   shows **API: ok**.
+2. The Project Task Builder is preloaded with the 10 sample tasks.
+3. You can add a task, edit a task, and delete a task.
+4. In **Current team**, "Fill current best team" selects Sarah, Maya, Priya,
+   Alex, Casey + AI Research Agent + AI QA Reviewer, and the coverage preview
+   updates.
+5. **Run Project Simulation** shows a **Recommendation Summary**, a **Compare
+   Staffing Options** table, five option cards, and a **Task Routing** table.
+6. **Preview task routing** shows the routing table (decision + scores +
+   review/rework hours) before running a full simulation.
+7. **Run uncertainty analysis** (Monte Carlo) shows P10/P50/P90 duration & cost,
+   deadline/budget probabilities, and a histogram; re-running with the same seed
+   gives identical numbers.
+8. The **Data and Settings** section exists below and expands to reveal the
+   employees/AI/tasks tables, CSV upload, scoring config, manual team builder,
+   and full simulation.
+
+**Data and Settings (secondary):**
+
+9. **Run Full Simulation** returns 5 ranked team cards; **Compare** on two
+   cards shows the comparison table.
+10. Editing a weight and clicking **Save Config** shows "Config saved"; a
+    negative weight shows a validation error.
+11. Uploading a malformed CSV shows a validation error; re-uploading a valid
+    file shows success and refreshes the table.

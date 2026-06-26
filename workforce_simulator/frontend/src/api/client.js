@@ -6,8 +6,22 @@
 // team names), or a validation array (422). `extractError` flattens all of
 // those into one readable message.
 
+// Normalize a configured API base: a bare hostname (e.g. what Render's
+// `fromService` injects) is treated as https://; a full URL is used as-is.
+// Empty/undefined passes through so the fallback chain below applies.
+function normalizeBase(value) {
+  if (!value) return value;
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+// API base URL. In deployment set VITE_API_BASE_URL to the backend's URL (or
+// bare hostname) at build time. VITE_API_BASE is still accepted for backward
+// compatibility, and both fall back to the local dev backend so `npm run dev`
+// works unchanged.
 export const API_BASE =
-  import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+  normalizeBase(import.meta.env.VITE_API_BASE_URL) ||
+  import.meta.env.VITE_API_BASE ||
+  'http://127.0.0.1:8000';
 
 function extractError(status, body) {
   const detail = body && body.detail !== undefined ? body.detail : body;
@@ -91,12 +105,27 @@ export const api = {
   getEmployees: () => request('/employees'),
   getAIAgents: () => request('/ai-agents'),
   getTasks: () => request('/tasks'),
+  getPriors: () => request('/priors'),
+  getWorkbankPriors: () => request('/priors/workbank'),
+  matchTasks: (tasks) => jsonPost('/priors/match-tasks', { tasks }),
+  matchWorkbankTasks: (tasks) => jsonPost('/priors/workbank/match-tasks', { tasks }),
   runSimulation: () => request('/simulate', { method: 'POST' }),
   runManualTeam: (humanNames, aiAgentNames) =>
     jsonPost('/simulate/manual-team', {
       human_names: humanNames,
       ai_agent_names: aiAgentNames,
     }),
+  runProjectSimulation: (scenario) => jsonPost('/simulate/project', scenario),
+  routeTasks: (tasks) => jsonPost('/route/tasks', { tasks }),
+  runUncertainty: (payload) => jsonPost('/simulate/uncertainty', payload),
+  submitActuals: (actual) => jsonPost('/calibration/actuals', actual),
+  getCalibrationSummary: () => request('/calibration/summary'),
+  getCalibrationProposals: () => request('/calibration/proposals'),
+  getCalibrationActive: () => request('/calibration/active'),
+  applyCalibration: (proposalIds, applyNotes) =>
+    jsonPost('/calibration/apply', { proposal_ids: proposalIds, apply_notes: applyNotes }),
+  rejectCalibration: (proposalIds) =>
+    jsonPost('/calibration/reject', { proposal_ids: proposalIds }),
   uploadEmployees: (file) => uploadFile('/upload/employees', file),
   uploadAIAgents: (file) => uploadFile('/upload/ai-agents', file),
   uploadTasks: (file) => uploadFile('/upload/tasks', file),
