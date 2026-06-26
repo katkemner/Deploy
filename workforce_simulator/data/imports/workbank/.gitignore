@@ -1,0 +1,6 @@
+# Real WORKBank CSV exports are local, not committed (large + licensed source data).
+# Place these three files here to import them via GET /priors/workbank:
+#   task_statement_with_metadata.csv
+#   domain_worker_desires.csv
+#   expert_rated_technological_capability.csv
+*.csv

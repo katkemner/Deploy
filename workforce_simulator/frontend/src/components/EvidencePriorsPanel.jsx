@@ -19,10 +19,55 @@ function ConfidenceBadge({ level }) {
   );
 }
 
+// Read-only WORKBank import status. Not connected to scoring.
+function WorkbankStatus({ workbank }) {
+  if (!workbank) return null;
+  const status = workbank.import_status;
+  const imported = status === 'imported';
+  const isError = status === 'error';
+  const warnings = workbank.validation_warnings || [];
+
+  const badge = imported ? (
+    <span className="badge badge-valid">imported</span>
+  ) : isError ? (
+    <span className="badge badge-invalid">import error</span>
+  ) : (
+    <span className="badge badge-critical">not imported</span>
+  );
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <h3 style={{ fontSize: 15 }}>WORKBank import {badge}</h3>
+      <div className="msg" style={{ background: '#eef2ff', color: '#4338ca', border: '1px solid var(--border)' }}>
+        <strong>Read-only. Not yet connected to scoring.</strong>
+      </div>
+      {imported ? (
+        <p className="section-hint">
+          {workbank.task_count} task(s) · {workbank.occupation_count} occupation(s)
+          normalized from WORKBank CSVs.
+        </p>
+      ) : (
+        <p className="section-hint">
+          WORKBank CSVs have not been imported yet. Place the three files in{' '}
+          <code>data/imports/workbank/</code> to import them.
+        </p>
+      )}
+      {warnings.length > 0 && (
+        <div className="msg" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}>
+          {warnings.map((w, i) => (
+            <div key={i}>⚠ {w}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EvidencePriorsPanel() {
   const [priors, setPriors] = useState(null);
   const [error, setError] = useState(null);
   const [matches, setMatches] = useState(null);
+  const [workbank, setWorkbank] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -30,6 +75,14 @@ export default function EvidencePriorsPanel() {
         setPriors(await api.getPriors());
       } catch (err) {
         setError(err.message);
+      }
+    })();
+    // WORKBank import status (read-only; not yet connected to scoring).
+    (async () => {
+      try {
+        setWorkbank(await api.getWorkbankPriors());
+      } catch {
+        /* best-effort; the panel renders without it */
       }
     })();
     // Read-only preview: match the current sample tasks to their closest prior.
@@ -85,6 +138,8 @@ export default function EvidencePriorsPanel() {
         {priors.task_routing_priors.length} task-routing priors ·{' '}
         {priors.hybrid_guardrail_priors.length} hybrid-guardrail priors.
       </p>
+
+      <WorkbankStatus workbank={workbank} />
 
       <div className="table-scroll">
         <table className="table">

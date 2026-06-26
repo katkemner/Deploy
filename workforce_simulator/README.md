@@ -348,6 +348,36 @@ not exact figures from those sources** — the file is marked
 read-only **Evidence Priors** panel under *Data and Settings* shows the sources,
 weights, and counts with a clear "not yet connected to routing" note.
 
+#### WORKBank importer (read-only; not connected to scoring)
+
+`src/workbank.py` imports real **WORKBank** CSV exports into a single
+normalized, local priors file and exposes them read-only. It reads three files
+from `data/imports/workbank/` (git-ignored — place your own exports there):
+
+- `task_statement_with_metadata.csv` — the task spine: `task_id`,
+  `task_statement`, `occupation_title`, `onet_soc_code`, `task_type`, and the
+  four 0–1 requirement metadata columns (`physical_action_requirement`,
+  `uncertainty_or_high_stakes_requirement`, `domain_expertise_requirement`,
+  `interpersonal_communication_requirement`).
+- `domain_worker_desires.csv` — worker survey rows (`worker_automation_desire`,
+  `worker_desired_has`), many per task, averaged.
+- `expert_rated_technological_capability.csv` — expert rating rows
+  (`expert_ai_capability`, `expert_feasible_has`), many per task, averaged.
+
+The importer validates required columns, joins the survey/rating rows onto each
+task **by `task_id` (with a stable task-text fallback)**, computes per-task
+averages and sample counts, derives a `source_confidence` from data coverage,
+and writes `data/priors/workbank_normalized.json` (also git-ignored). It **fails
+clearly** when a file is missing or a required column is absent/malformed.
+
+`GET /priors/workbank` returns `import_status` (`imported` / `not_imported` /
+`error`), `task_count`, `occupation_count`, `normalized_priors`, and
+`validation_warnings`. The **Evidence Priors** panel shows the import status,
+task/occupation counts, any missing-file warning, and the label *"Read-only. Not
+yet connected to scoring."* **The normalized WORKBank data is NOT used by
+routing, scoring, prior-backed scoring, calibration, Monte Carlo, or Project
+Mode — it changes no simulation behaviour.**
+
 #### Prior matching preview (preview only)
 
 `src/prior_matching.py` deterministically matches each project task to its
@@ -507,6 +537,7 @@ source weights, public prior values, or the routing decision rules.
 | `GET /ai-agents` | AI agents loaded from `data/ai_agents.csv` |
 | `GET /tasks` | Project tasks loaded from `data/project_tasks.csv` |
 | `GET /priors` | Loaded public evidence priors (representative seed; not yet wired to routing) |
+| `GET /priors/workbank` | Read-only normalized WORKBank import status + data (not connected to scoring) |
 | `POST /priors/match-tasks` | Closest-prior match per task (preview only; not used for scoring) |
 | `POST /calibration/actuals` | Store a completed project's actuals + return the comparison |
 | `POST /calibration/compare` | Compare actuals to predictions without storing |
