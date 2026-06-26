@@ -27,6 +27,8 @@ import workbank
 import workbank_matching
 from models import Team
 
+from . import brief_extract
+from . import brief_parser
 from .schemas import (
     AIAgent,
     Employee,
@@ -36,6 +38,7 @@ from .schemas import (
     HistoricalProjectActualInput,
     ManualTeamRequest,
     MatchTasksRequest,
+    ParseBriefRequest,
     ProjectScenarioRequest,
     ProjectTask,
     RouteTasksRequest,
@@ -634,6 +637,67 @@ async def upload_tasks(file: UploadFile = File(...)) -> dict:
         data_loader.load_tasks, TASKS_CSV,
     )
     return {"message": "project_tasks.csv updated", "rows": rows}
+
+
+# ---------------------------------------------------------------------------
+# Brief upload -> AI-drafted tasks (input-assist only; engine untouched)
+# ---------------------------------------------------------------------------
+
+def _available_skills() -> List[str]:
+    """Union of human skills + AI-agent capabilities, for skill reconciliation.
+
+    Injected into the drafting prompt so the LLM picks ``required_skill`` from
+    the team's real vocabulary, and used afterwards to flag anything outside it.
+    """
+    skills: set[str] = set()
+    for w in data_loader.load_employees(EMPLOYEES_CSV):
+        skills.update(w.skills)
+    for w in data_loader.load_ai_agents(AI_AGENTS_CSV):
+        skills.update(w.skills)
+    return sorted(s for s in skills if s)
+
+
+@router.post("/projects/extract-brief-text", tags=["brief"])
+async def extract_brief_text(file: UploadFile = File(...)) -> dict:
+    """Deterministically extract plain text from an uploaded brief (NO LLM).
+
+    Accepts a ``.docx`` or text-based ``.pdf`` and returns the extracted text
+    for the user to preview. Nothing is persisted and no AI is involved; the
+    text is only sent for AI drafting later, via ``/projects/parse-brief``,
+    after the user explicitly confirms.
+    """
+    content = await file.read()
+    try:
+        result = brief_extract.extract_brief_text(content, file.filename or "")
+    except brief_extract.BriefExtractionError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
+    return {
+        "filename": result.filename,
+        "file_type": result.file_type,
+        "char_count": result.char_count,
+        "truncated": result.truncated,
+        "text": result.text,
+    }
+
+
+@router.post("/projects/parse-brief", tags=["brief"])
+def parse_brief(request: ParseBriefRequest) -> dict:
+    """Draft EDITABLE tasks from confirmed brief text using Claude.
+
+    The LLM only proposes draft tasks for the user to review and edit; it does
+    not score, route, schedule, optimise, or recommend staffing, and the
+    deterministic engine is never touched. ``required_skill`` is constrained to
+    the team's real skill vocabulary; anything outside it is flagged
+    ``needs_user_review``. Returns 503 if AI drafting isn't configured on this
+    server (no ``ANTHROPIC_API_KEY``), so the rest of the app keeps working.
+    """
+    try:
+        result = brief_parser.parse_brief(request.text, _available_skills())
+    except brief_parser.BriefParserUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except brief_parser.BriefParserError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
+    return result.model_dump()
 
 
 # ---------------------------------------------------------------------------

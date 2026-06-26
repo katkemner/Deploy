@@ -7,3 +7,11 @@ fastapi
 uvicorn
 pydantic
 python-multipart
+
+# Brief-upload feature (optional): deterministic text extraction from uploaded
+# .docx / text-based PDF briefs, plus the Anthropic SDK used only to draft
+# editable tasks from that text. The AI-drafting endpoint degrades gracefully
+# (HTTP 503) when ANTHROPIC_API_KEY is not set, so these stay import-guarded.
+python-docx
+pypdf
+anthropic

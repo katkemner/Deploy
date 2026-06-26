@@ -238,6 +238,24 @@ class ProjectTaskInput(BaseModel):
     required_skills: Optional[List[str]] = None
 
 
+class ParseBriefRequest(BaseModel):
+    """Body for ``POST /projects/parse-brief``.
+
+    Carries the *already-extracted* brief text (never the raw file). The text
+    is sent to the AI-drafting step only after the user confirms; the endpoint
+    turns it into editable draft tasks.
+    """
+
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Provide the extracted brief text.")
+        return value
+
+
 class RouteTasksRequest(BaseModel):
     """Body for ``POST /route/tasks`` - routing only, no team needed."""
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import ProjectTaskBuilder from './ProjectTaskBuilder.jsx';
+import UploadBriefPanel from './UploadBriefPanel.jsx';
 import CurrentTeamSelector from './CurrentTeamSelector.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
 import ProjectComparisonTable from './ProjectComparisonTable.jsx';
@@ -303,6 +304,7 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
       </div>
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '8px 0 16px' }} />
+      <UploadBriefPanel onUseTasks={setTasks} />
       <ProjectTaskBuilder tasks={tasks} onChange={setTasks} />
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />

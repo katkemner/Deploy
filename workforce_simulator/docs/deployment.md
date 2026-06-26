@@ -88,10 +88,12 @@ When it finishes, open the **workforce-simulator-web** URL Render shows you.
 | Frontend | `VITE_API_BASE_URL` | Blueprint (preset value) | Backend's public URL, baked into the build. Preset in `render.yaml` to `https://workforce-simulator-api.onrender.com`. Update only if you rename the backend or add a custom domain. A bare hostname is treated as `https://`. |
 | Backend | `PYTHON_VERSION` | Blueprint (`3.11.9`) | Python version Render builds with. |
 | Backend | `CORS_ALLOW_ORIGINS` | **Optional**, you (later) | Comma-separated browser origins allowed to call the API. Unset → `*` (works for staging). Set to the frontend URL to lock down; a bare hostname is accepted. |
+| Backend | `ANTHROPIC_API_KEY` | **Optional secret**, you (dashboard) | Enables AI task drafting from an uploaded brief. Declared `sync: false` in `render.yaml` so Render prompts for it and stores it as a secret. Unset → the brief-upload feature returns `503` and the rest of the app works normally. See [Enabling AI task drafting](#enabling-ai-task-drafting-optional). |
 
 With the Blueprint, **no environment variables need to be entered by hand** for a
 staging deploy — the frontend↔backend wiring is automatic and CORS defaults to
-permissive. The only optional step is restricting CORS later (above).
+permissive. The optional steps are restricting CORS later (above) and enabling
+AI task drafting (below).
 
 If you create the services manually (Option B) instead of using the Blueprint,
 set `VITE_API_BASE_URL` on the frontend to the backend's URL yourself, then
@@ -99,6 +101,33 @@ redeploy the frontend (the value is compiled in at build time).
 
 For multiple allowed CORS origins, comma-separate them:
 `CORS_ALLOW_ORIGINS=https://app.example.com,https://staging.example.com`.
+
+### Enabling AI task drafting (optional)
+
+Project Mode can draft editable tasks from an uploaded project brief (a Word
+`.docx` or a text-based PDF). The brief's text is extracted on the backend and,
+**only after you confirm**, sent to Anthropic's API, which proposes a draft task
+list. The AI never picks the team, scores options, or runs the simulation — it
+only fills in the editable task list, which you review and change before running
+anything. The deterministic engine is untouched.
+
+To turn it on:
+
+1. Create an API key at the [Anthropic Console](https://console.anthropic.com/).
+2. In Render: **backend service → Environment → Add Environment Variable** →
+   key `ANTHROPIC_API_KEY`, value your key. (The Blueprint already declares it
+   as `sync: false`, so it may appear there awaiting a value.)
+3. Save; Render redeploys the backend. The **Start from a project brief** panel
+   in Project Mode now works.
+
+If the key is **not** set, the panel's “Generate draft tasks” step returns a
+clear `503` message and everything else keeps working — manual task entry is
+always available.
+
+> ⚠️ **Privacy:** with a key set, the extracted brief text is sent to Anthropic.
+> This is a staging demo — **do not upload sensitive company data.** v1 supports
+> `.docx` and text-based PDFs only (no OCR for scanned PDFs), and uploaded files
+> are **not persisted** — only the extracted text is processed in memory.
 
 ---
 
@@ -147,4 +176,8 @@ backend.
   **ephemeral** — they reset when the service restarts or redeploys. This is a
   staging demo, not a system of record.
 - **Not built yet (by design):** auth, access control, a database, payments,
-  LLM calls, and external API integrations. See the staging warning at the top.
+  and external API integrations. See the staging warning at the top.
+- **AI task drafting (optional):** the only LLM call in the app is the
+  opt-in brief-upload drafting step, off unless `ANTHROPIC_API_KEY` is set. It
+  drafts editable tasks only — it never scores, routes, or runs the
+  deterministic engine. See [Enabling AI task drafting](#enabling-ai-task-drafting-optional).
