@@ -28,6 +28,19 @@ const OPTION_ORDER = [
   'lowest_cost_valid_team',
 ];
 
+// Plain-language description of what each staffing option represents.
+const OPTION_DESCRIPTIONS = {
+  current_team: 'Exactly the people + AI agents you selected — your baseline.',
+  ai_assisted_current_team:
+    'Your humans plus the AI agents the engine adds where they improve coverage, speed, cost, or risk.',
+  recommended_balanced_team:
+    'The valid team with the best overall weighted score across all metrics.',
+  fastest_valid_team:
+    'The valid team with the shortest estimated duration (fully covers required skills).',
+  lowest_cost_valid_team:
+    'The cheapest valid team (fully covers required skills).',
+};
+
 function Metric({ label, value }) {
   return (
     <div className="metric-row">
@@ -53,6 +66,12 @@ function OptionCard({ option, isRecommended }) {
         <div style={{ margin: '6px 0' }}>
           <span className="badge badge-critical">recommended</span>
         </div>
+      )}
+
+      {OPTION_DESCRIPTIONS[option.option] && (
+        <p className="section-hint" style={{ margin: '4px 0' }}>
+          {OPTION_DESCRIPTIONS[option.option]}
+        </p>
       )}
 
       <div className="tag-group" style={{ margin: '8px 0' }}>
@@ -343,6 +362,13 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
           <RecommendationSummary recommendation={result.recommendation} />
 
           <h3 style={{ fontSize: 16 }}>Compare Staffing Options</h3>
+          <p className="section-hint">
+            The same five options side by side. <strong>Review h</strong> =
+            estimated human hours to review AI output; <strong>Rework h</strong>{' '}
+            = expected hours fixing AI mistakes; <strong>Net AI h</strong> = AI
+            time saved minus that review + rework. A <em>reviewer bottleneck</em>{' '}
+            means the AI review load exceeds the team's human review capacity.
+          </p>
           <ProjectComparisonTable rows={result.comparison_table} />
 
           <h3 style={{ fontSize: 16, marginTop: 18 }}>Decision options</h3>
@@ -366,8 +392,11 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
             Task Routing (human vs AI)
           </h3>
           <p className="section-hint">
-            How each task should be split between humans and AI, with the review
-            and rework hours that routing implies.
+            For each task, a recommended split between humans and AI — from
+            AI_ONLY through HUMAN_ONLY — plus the review and rework hours that
+            split implies. Open <strong>Why?</strong> on any row to see where each
+            1–5 suitability score came from (manual input, public prior,
+            WORKBank, heuristic, or fallback).
           </p>
           <RoutingTable
             routing={result.task_routing}

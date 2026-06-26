@@ -19,7 +19,17 @@ const OBJ_LABELS = [
 ];
 
 export default function TradeoffView({ paretoFront, paretoExplanation, recommendedKey }) {
-  if (!paretoFront || paretoFront.length === 0) return null;
+  if (!paretoFront || paretoFront.length === 0) {
+    return (
+      <div style={{ marginTop: 18 }}>
+        <h3 style={{ fontSize: 16 }}>Tradeoff View (Pareto front)</h3>
+        <p className="section-hint">
+          No tradeoff data available for this run. Run a project simulation to
+          compare staffing options across all objectives.
+        </p>
+      </div>
+    );
+  }
 
   const byId = Object.fromEntries(paretoFront.map((p) => [p.option_id, p]));
   const recommended = recommendedKey ? byId[recommendedKey] : null;
@@ -30,9 +40,10 @@ export default function TradeoffView({ paretoFront, paretoExplanation, recommend
     <div style={{ marginTop: 18 }}>
       <h3 style={{ fontSize: 16 }}>Tradeoff View (Pareto front)</h3>
       <p className="section-hint">
-        Which options are non-dominated across all objectives — you cannot
-        improve one objective without giving up another. This view is
-        informational and does not change the recommendation.
+        A <strong>Pareto-optimal</strong> option is one no other option beats on
+        every objective at once — you can't make it faster, cheaper, lower-risk,
+        etc. without giving something up. This view is read-only context for the
+        recommendation; it never changes which team is recommended.
       </p>
 
       {recDominated && (

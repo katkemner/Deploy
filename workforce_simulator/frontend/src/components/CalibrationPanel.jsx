@@ -163,6 +163,14 @@ export default function CalibrationPanel() {
       {active && (
         <div style={{ marginTop: 14 }}>
           <h3 style={{ fontSize: 15 }}>Approved calibration multipliers</h3>
+          <p className="section-hint" style={{ marginTop: 0 }}>
+            Data source: <strong>your own approved historical calibration</strong>{' '}
+            (the multipliers you applied from the proposals below). When enabled,
+            they adjust future simulation duration / review / rework / risk, so
+            they <strong>can change recommendations</strong>. Auto-enabled once
+            you approve any multiplier; turn the toggle off to ignore them without
+            deleting them.
+          </p>
           <div className="msg" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}>
             ⚠ {active.warning}
           </div>
@@ -322,6 +330,14 @@ export default function CalibrationPanel() {
         </div>
       )}
 
+      {proposals.length === 0 && (
+        <p className="section-hint" style={{ marginTop: 14 }}>
+          No calibration actuals entered yet. Submit a completed project's actual
+          outcomes above to generate suggested multiplier updates here — nothing
+          is ever applied automatically.
+        </p>
+      )}
+
       {proposals.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <h3 style={{ fontSize: 15 }}>Suggested multiplier updates (proposals)</h3>
@@ -393,11 +409,15 @@ export default function CalibrationPanel() {
         </div>
       )}
 
-      {summary && summary.project_count > 0 && (
+      {summary && summary.project_count > 0 ? (
         <p className="section-hint" style={{ marginTop: 12 }}>
           History: {summary.project_count} project(s) recorded · mean absolute
           duration error {summary.mean_absolute_error_pct.duration_error_pct ?? '—'}% ·
           bottleneck accuracy {summary.bottleneck_accuracy ?? '—'}.
+        </p>
+      ) : (
+        <p className="section-hint" style={{ marginTop: 12 }}>
+          History: no completed projects recorded yet.
         </p>
       )}
     </div>
