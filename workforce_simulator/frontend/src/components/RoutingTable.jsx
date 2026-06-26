@@ -77,6 +77,64 @@ function ProvenanceRows({ items }) {
   ));
 }
 
+const CONFIDENCE_STYLE = {
+  HIGH: { background: '#e8f7ee', color: 'var(--green)' },
+  MEDIUM: { background: '#fef3e2', color: 'var(--amber)' },
+  LOW: { background: '#fdecec', color: 'var(--red)' },
+};
+
+// Read-only WORKBank match preview for one task. Not used for scoring.
+function WorkbankMatchPreview({ preview }) {
+  if (!preview) return null;
+  const conf = CONFIDENCE_STYLE[preview.match_confidence] || CONFIDENCE_STYLE.LOW;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <h4 style={{ fontSize: 14, margin: '0 0 6px' }}>WORKBank Match Preview</h4>
+      <div className="msg" style={{ background: '#eef2ff', color: '#4338ca', border: '1px solid var(--border)' }}>
+        <strong>Preview only. Not yet used for scoring.</strong>
+      </div>
+      {preview.matched_workbank_task_id ? (
+        <table className="table">
+          <tbody>
+            <tr>
+              <td style={{ fontWeight: 600 }}>Matched WORKBank task</td>
+              <td>
+                {preview.matched_task_text}{' '}
+                <span className="muted">({preview.matched_workbank_task_id})</span>
+              </td>
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>Occupation</td>
+              <td>{preview.matched_occupation_title || '—'}</td>
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>Confidence</td>
+              <td>
+                <span className="badge" style={{ background: conf.background, color: conf.color }}>
+                  {preview.match_confidence}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>Score</td>
+              <td>{preview.match_score}</td>
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>Explanation</td>
+              <td style={{ whiteSpace: 'normal', minWidth: 260 }}>{preview.explanation}</td>
+            </tr>
+          </tbody>
+        </table>
+      ) : (
+        <p className="section-hint">
+          No imported WORKBank task matched (import WORKBank data to enable this
+          preview).
+        </p>
+      )}
+    </div>
+  );
+}
+
 function WhyPanel({ row }) {
   return (
     <div style={{ padding: '10px 4px' }}>
@@ -126,6 +184,7 @@ function WhyPanel({ row }) {
           <ProvenanceRows items={row.route_provenance || []} />
         </tbody>
       </table>
+      <WorkbankMatchPreview preview={row.workbank_match_preview} />
     </div>
   );
 }
