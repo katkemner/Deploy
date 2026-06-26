@@ -26,13 +26,19 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-# Model used for drafting. Opus is the skill default; Haiku/Sonnet
-# (claude-haiku-4-5 / claude-sonnet-4-6) are cheaper swaps for this
-# extraction-style task if cost becomes a concern.
-DRAFT_MODEL = "claude-opus-4-8"
+# Default model used for drafting. Overridable at runtime via the
+# ANTHROPIC_MODEL env var (e.g. claude-haiku-4-5 / claude-sonnet-4-6 are cheaper
+# swaps for this extraction-style task). Read per-call so the env var can be set
+# without restarting / re-importing.
+DEFAULT_MODEL = "claude-opus-4-8"
 MAX_TOKENS = 8000
+
+
+def _model_name() -> str:
+    """The drafting model: ``ANTHROPIC_MODEL`` env var, else the default."""
+    return os.environ.get("ANTHROPIC_MODEL", "").strip() or DEFAULT_MODEL
 
 
 class BriefParserUnavailable(Exception):
@@ -214,8 +220,10 @@ def parse_brief(text: str, available_skills: List[str]) -> BriefParseResult:
 
     client = anthropic.Anthropic()
     try:
+        # Only the request essentials are sent. temperature / top_p / top_k are
+        # intentionally omitted so the request uses the model's defaults.
         response = client.messages.parse(
-            model=DRAFT_MODEL,
+            model=_model_name(),
             max_tokens=MAX_TOKENS,
             system=_SYSTEM_PROMPT,
             messages=[
@@ -243,6 +251,15 @@ def parse_brief(text: str, available_skills: List[str]) -> BriefParseResult:
         raise BriefParserError(
             502, "Couldn't reach the AI service. Check the connection and retry."
         ) from exc
+    except ValidationError as exc:
+        # messages.parse() validates the model's JSON against _ModelOutput and
+        # raises ValidationError if it doesn't conform (malformed structured
+        # output). Surface a clean 422 rather than a 500.
+        raise BriefParserError(
+            422,
+            "The AI returned tasks in an unexpected format. Try again or edit "
+            "the brief.",
+        ) from exc
 
     # Safety classifiers may decline (HTTP 200, stop_reason == "refusal").
     if getattr(response, "stop_reason", None) == "refusal":
@@ -252,7 +269,12 @@ def parse_brief(text: str, available_skills: List[str]) -> BriefParseResult:
             "try again.",
         )
 
-    model_output: _ModelOutput = response.parsed_output
+    model_output: Optional[_ModelOutput] = response.parsed_output
+    if model_output is None:
+        # No parsed content (e.g. an empty/non-text response).
+        raise BriefParserError(
+            502, "The AI returned an empty or unreadable response. Try again."
+        )
     tasks = list(model_output.draft_tasks)
     unmatched = _reconcile_skills(tasks, available_skills)
 

@@ -89,6 +89,7 @@ When it finishes, open the **workforce-simulator-web** URL Render shows you.
 | Backend | `PYTHON_VERSION` | Blueprint (`3.11.9`) | Python version Render builds with. |
 | Backend | `CORS_ALLOW_ORIGINS` | **Optional**, you (later) | Comma-separated browser origins allowed to call the API. Unset → `*` (works for staging). Set to the frontend URL to lock down; a bare hostname is accepted. |
 | Backend | `ANTHROPIC_API_KEY` | **Optional secret**, you (dashboard) | Enables AI task drafting from an uploaded brief. Declared `sync: false` in `render.yaml` so Render prompts for it and stores it as a secret. Unset → the brief-upload feature returns `503` and the rest of the app works normally. See [Enabling AI task drafting](#enabling-ai-task-drafting-optional). |
+| Backend | `ANTHROPIC_MODEL` | **Optional**, you (dashboard) | Overrides the model used for task drafting. Unset → `claude-opus-4-8`. Set e.g. `claude-haiku-4-5` or `claude-sonnet-4-6` for a cheaper draft. |
 
 With the Blueprint, **no environment variables need to be entered by hand** for a
 staging deploy — the frontend↔backend wiring is automatic and CORS defaults to
@@ -123,6 +124,9 @@ To turn it on:
 If the key is **not** set, the panel's “Generate draft tasks” step returns a
 clear `503` message and everything else keeps working — manual task entry is
 always available.
+
+To use a cheaper or different model for drafting, set `ANTHROPIC_MODEL` (e.g.
+`claude-haiku-4-5`); it defaults to `claude-opus-4-8`.
 
 > ⚠️ **Privacy:** with a key set, the extracted brief text is sent to Anthropic.
 > This is a staging demo — **do not upload sensitive company data.** v1 supports

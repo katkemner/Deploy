@@ -203,10 +203,16 @@ def test_reconcile_repairs_nonpositive_effort():
 # ---------------------------------------------------------------------------
 
 class _FakeMessages:
-    def __init__(self, response):
+    def __init__(self, response, capture=None):
         self._response = response
+        self._capture = capture
 
     def parse(self, **kwargs):
+        # Record the exact kwargs so tests can assert the real call shape
+        # (model name, output_format present, no sampling params).
+        if self._capture is not None:
+            self._capture.clear()
+            self._capture.update(kwargs)
         if isinstance(self._response, Exception):
             raise self._response
         return self._response
@@ -218,8 +224,14 @@ class _FakeResponse:
         self.stop_reason = stop_reason
 
 
-def _install_fake_anthropic(response):
-    """Inject a fake ``anthropic`` module; return it so tests can build errors."""
+def _install_fake_anthropic(response, capture=None):
+    """Inject a fake ``anthropic`` module; return it so tests can build errors.
+
+    The fake mirrors the real call shape: ``Anthropic().messages.parse(...)``
+    returning an object with ``parsed_output`` + ``stop_reason`` (the real SDK
+    returns ``ParsedMessage``, a ``Message`` subclass with both), and raising
+    ``pydantic.ValidationError`` / typed errors just as the SDK does.
+    """
     mod = types.ModuleType("anthropic")
 
     class RateLimitError(Exception):
@@ -239,19 +251,29 @@ def _install_fake_anthropic(response):
     mod.BadRequestError = BadRequestError
     mod.APIConnectionError = APIConnectionError
     mod.Anthropic = lambda *a, **k: types.SimpleNamespace(
-        messages=_FakeMessages(response)
+        messages=_FakeMessages(response, capture)
     )
     sys.modules["anthropic"] = mod
     return mod
 
 
-def _run_with_fake(response, text="Build an app", skills=None):
-    """Run parse_brief with a fake SDK + a dummy key; restore env/modules after."""
+def _run_with_fake(response, text="Build an app", skills=None, capture=None,
+                   model_env=None):
+    """Run parse_brief with a fake SDK + a dummy key; restore env/modules after.
+
+    ``capture`` (a dict) receives the kwargs passed to ``messages.parse``.
+    ``model_env`` sets ``ANTHROPIC_MODEL`` for the call (None → unset).
+    """
     saved_mod = sys.modules.get("anthropic")
     saved_key = os.environ.get("ANTHROPIC_API_KEY")
+    saved_model = os.environ.get("ANTHROPIC_MODEL")
     os.environ["ANTHROPIC_API_KEY"] = "sk-test-dummy"
+    if model_env is not None:
+        os.environ["ANTHROPIC_MODEL"] = model_env
+    else:
+        os.environ.pop("ANTHROPIC_MODEL", None)
     try:
-        _install_fake_anthropic(response)
+        _install_fake_anthropic(response, capture)
         return parse_brief(text, skills if skills is not None else ["UX", "Research"])
     finally:
         if saved_mod is not None:
@@ -262,6 +284,10 @@ def _run_with_fake(response, text="Build an app", skills=None):
             os.environ.pop("ANTHROPIC_API_KEY", None)
         else:
             os.environ["ANTHROPIC_API_KEY"] = saved_key
+        if saved_model is None:
+            os.environ.pop("ANTHROPIC_MODEL", None)
+        else:
+            os.environ["ANTHROPIC_MODEL"] = saved_model
 
 
 def test_parse_brief_unavailable_without_key():
@@ -293,6 +319,57 @@ def test_parse_brief_happy_path_and_reconciles():
     assert result.draft_tasks[1].needs_user_review is True
     assert result.available_skills == ["UX", "Research"]
     assert result.notes == "Two tasks drafted."
+
+
+def test_parse_brief_call_shape_matches_sdk():
+    # The call must send output_format and must NOT send sampling params.
+    parsed = _ModelOutput(draft_tasks=[], notes=None)
+    capture = {}
+    _run_with_fake(_FakeResponse(parsed), capture=capture)
+    assert capture["output_format"] is _ModelOutput
+    assert "messages" in capture and "max_tokens" in capture and "system" in capture
+    for forbidden in ("temperature", "top_p", "top_k"):
+        assert forbidden not in capture, f"{forbidden} should not be sent"
+
+
+def test_parse_brief_uses_default_model():
+    parsed = _ModelOutput(draft_tasks=[], notes=None)
+    capture = {}
+    _run_with_fake(_FakeResponse(parsed), capture=capture, model_env=None)
+    assert capture["model"] == "claude-opus-4-8"
+
+
+def test_parse_brief_model_overridable_by_env():
+    parsed = _ModelOutput(draft_tasks=[], notes=None)
+    capture = {}
+    _run_with_fake(_FakeResponse(parsed), capture=capture, model_env="claude-haiku-4-5")
+    assert capture["model"] == "claude-haiku-4-5"
+
+
+def test_parse_brief_malformed_output_raises_clean_422():
+    # Simulate messages.parse() raising pydantic.ValidationError on malformed
+    # structured output (the real SDK validates via TypeAdapter.validate_json).
+    from pydantic import ValidationError
+
+    try:
+        _ModelOutput.model_validate({"draft_tasks": [{}]})  # missing required fields
+        assert False, "expected ValidationError to build the fixture"
+    except ValidationError as built:
+        validation_error = built
+
+    try:
+        _run_with_fake(validation_error)
+        assert False, "expected BriefParserError"
+    except BriefParserError as exc:
+        assert exc.status == 422
+
+
+def test_parse_brief_none_parsed_output_raises_502():
+    try:
+        _run_with_fake(_FakeResponse(None))
+        assert False, "expected BriefParserError"
+    except BriefParserError as exc:
+        assert exc.status == 502
 
 
 def test_parse_brief_refusal_raises_422():
