@@ -35,18 +35,34 @@ app = FastAPI(
 )
 
 
+def _normalize_origin(origin: str) -> str:
+    """Normalize one CORS origin: a bare hostname becomes ``https://host``.
+
+    ``*`` is left as-is. A full ``http(s)://`` origin is used unchanged (minus a
+    trailing slash). This lets the env var hold either a full URL or just a
+    hostname (e.g. what Render's ``fromService`` injects).
+    """
+    origin = origin.strip()
+    if not origin or origin == "*":
+        return origin
+    if not origin.lower().startswith(("http://", "https://")):
+        origin = "https://" + origin
+    return origin.rstrip("/")
+
+
 def _cors_origins() -> list[str]:
     """Allowed CORS origins, from ``CORS_ALLOW_ORIGINS`` (comma-separated).
 
     Defaults to ``["*"]`` when the variable is unset or blank, which preserves
     the original permissive local-dev behaviour. In staging/production set it to
     the deployed frontend origin(s), e.g.
-    ``CORS_ALLOW_ORIGINS=https://workforce-simulator-web.onrender.com``.
+    ``CORS_ALLOW_ORIGINS=https://workforce-simulator-web.onrender.com`` (a bare
+    hostname is also accepted).
     """
     raw = os.environ.get("CORS_ALLOW_ORIGINS", "").strip()
     if not raw:
         return ["*"]
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return [_normalize_origin(o) for o in raw.split(",") if o.strip()]
 
 
 # CORS so the frontend (local on any port, or the deployed static site) can call
