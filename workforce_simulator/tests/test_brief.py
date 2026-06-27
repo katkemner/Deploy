@@ -520,7 +520,7 @@ def test_drafted_tasks_map_into_project_simulation():
     r = client.post("/simulate/project", json=payload)
     assert r.status_code == 200
     body = r.json()
-    assert len(body["options"]) == 8
+    assert len(body["options"]) == 9
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 

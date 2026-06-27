@@ -233,9 +233,9 @@ def test_recommendation_unchanged_by_pareto():
 def test_pareto_front_is_read_only_options_unchanged():
     body = client.post("/simulate/project", json=_sample_project()).json()
     # Project Mode still returns its eight options + recommendation intact.
-    assert len(body["options"]) == 8
+    assert len(body["options"]) == 9
     assert body["recommendation"]["recommended_option"] in body["options"]
-    assert len(body["comparison_table"]) == 8
+    assert len(body["comparison_table"]) == 9
 
 
 # Allow running directly without pytest.

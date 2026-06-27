@@ -156,6 +156,10 @@ class SimulationResult:
     total_score: float = 0.0
     rank: int = 0
     plain_english_explanation: str = ""
+    # Filled in by Project Mode for the Most-Innovative objective/option. Does
+    # not affect any existing score; it is a separate ranking lens.
+    innovation_score: float = 0.0
+    innovation_components: Dict[str, float] = field(default_factory=dict)
 
 
 def simulate_team(

@@ -1,6 +1,6 @@
 import React from 'react';
 
-// Side-by-side comparison of the five Project Mode staffing options.
+// Side-by-side comparison of the Project Mode staffing options.
 export default function ProjectComparisonTable({ rows }) {
   if (!rows || rows.length === 0) return null;
   return (
@@ -20,6 +20,7 @@ export default function ProjectComparisonTable({ rows }) {
             <th>Productivity</th>
             <th>Risk</th>
             <th>Confidence</th>
+            <th>Innovation</th>
             <th>Review h</th>
             <th>Rework h</th>
             <th>Net AI h</th>
@@ -46,6 +47,7 @@ export default function ProjectComparisonTable({ rows }) {
               <td>{r.productivity}</td>
               <td>{r.risk}</td>
               <td>{r.confidence}</td>
+              <td>{r.innovation_score}</td>
               <td>{r.review_burden_hours}</td>
               <td>{r.expected_rework_hours}</td>
               <td>{r.net_ai_time_saved}</td>

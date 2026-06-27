@@ -233,7 +233,7 @@ def test_project_simulation_returns_all_options():
     r = client.post("/simulate/project", json=_sample_project())
     assert r.status_code == 200
     body = r.json()
-    # All eight decision options are present.
+    # All nine decision options are present.
     for key in (
         "current_team",
         "human_core_ai_gap_fill",
@@ -243,11 +243,13 @@ def test_project_simulation_returns_all_options():
         "fastest_valid_team",
         "lowest_cost_valid_team",
         "lowest_risk_valid_team",
+        "most_innovative_valid_team",
     ):
         assert key in body["options"], key
         assert "total_score" in body["options"][key]
+        assert "innovation_score" in body["options"][key]
     # Comparison table has one row per option and a recommendation summary.
-    assert len(body["comparison_table"]) == 8
+    assert len(body["comparison_table"]) == 9
     assert body["recommendation"]["recommended_option"] in body["options"]
     assert body["recommendation"]["summary_text"]
     assert body["recommendation"]["critical_path"]
@@ -272,9 +274,9 @@ def test_project_ai_first_conjures_agents():
     assert all(name.startswith("AI ") for name in ai_first["ai_agents_added"])
 
 
-def test_project_most_innovative_leans_into_ai():
-    # "Most Innovative" = the boldest valid plan that leans into AI (most
-    # AI-owned tasks). On the sample that is the AI-First strategy.
+def test_project_most_innovative_picks_highest_innovation_score():
+    # "Most Innovative" recommends the valid option with the highest
+    # innovation_score; the recommendation surfaces that score.
     r = client.post(
         "/simulate/project",
         json=_sample_project(optimization_objective="most_innovative"),
@@ -283,9 +285,26 @@ def test_project_most_innovative_leans_into_ai():
     body = r.json()
     rec_key = body["recommendation"]["recommended_option"]
     valid = {k: o for k, o in body["options"].items() if o["is_valid_team"]}
-    most_ai = max(len(o["ai_agents"]) for o in valid.values())
-    assert len(valid[rec_key]["ai_agents"]) == most_ai
-    assert most_ai >= 1  # it actually uses AI
+    best = max(o["innovation_score"] for o in valid.values())
+    assert valid[rec_key]["innovation_score"] == best
+    assert body["recommendation"]["innovation_score"] == best
+    # All nine innovation-score components are present and weighted to 0-100.
+    comps = body["options"]["most_innovative_valid_team"]["innovation_components"]
+    assert len(comps) == 9
+    assert 0 <= body["options"]["most_innovative_valid_team"]["innovation_score"] <= 100
+
+
+def test_project_innovation_not_just_ai_adoption():
+    # An AI-heavy plan must NOT automatically be the most innovative - innovation
+    # rewards human-led cross-functional capacity, not AI volume.
+    body = client.post(
+        "/simulate/project",
+        json=_sample_project(optimization_objective="most_innovative"),
+    ).json()
+    ai_first = body["options"]["ai_first_eligible"]
+    current = body["options"]["current_team"]
+    # The all-human current team out-scores the AI-First plan on innovation.
+    assert current["innovation_score"] >= ai_first["innovation_score"]
 
 
 def test_project_recommended_balanced_is_valid():
@@ -523,7 +542,7 @@ def test_route_tasks_provenance_marks_manual_override():
 def test_project_mode_routing_has_provenance_and_still_works():
     body = client.post("/simulate/project", json=_sample_project()).json()
     # Project Mode still returns all five options (behaviour unchanged).
-    assert len(body["options"]) == 8
+    assert len(body["options"]) == 9
     assert body["recommendation"]["recommended_option"] in body["options"]
     # And its task routing now carries provenance.
     row = body["task_routing"][0]
@@ -564,7 +583,7 @@ def test_priors_do_not_change_routing_behaviour():
 def test_priors_do_not_change_project_mode():
     # Project Mode still returns the five options and a recommendation.
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 8
+    assert len(body["options"]) == 9
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -621,7 +640,7 @@ def test_prior_matching_does_not_change_routing_or_project_results():
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     # Project Mode options/recommendation unchanged in shape.
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 8
+    assert len(body["options"]) == 9
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -683,7 +702,7 @@ def test_enabled_priors_affect_scoring_only_when_on():
         assert _has_prior_source(body["task_routing"])
         # Project Mode still returns five options with priors on.
         proj = client.post("/simulate/project", json=_sample_project()).json()
-        assert len(proj["options"]) == 8
+        assert len(proj["options"]) == 9
     finally:
         client.post("/config", json={
             k: v for k, v in original.items() if k != "weight_provenance"
@@ -761,7 +780,7 @@ def test_calibration_does_not_change_routing_or_project_mode():
     assert decisions["Documentation"] == "AI_ONLY"
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 8
+    assert len(body["options"]) == 9
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -841,7 +860,7 @@ def test_calibration_apply_does_not_change_routing_or_project_mode():
     assert decisions["Documentation"] == "AI_ONLY"
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 8
+    assert len(body["options"]) == 9
     _reset_calibration_store()
 
 

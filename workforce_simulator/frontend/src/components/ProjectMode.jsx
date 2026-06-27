@@ -32,6 +32,7 @@ const OPTION_ORDER = [
   'fastest_valid_team',
   'lowest_cost_valid_team',
   'lowest_risk_valid_team',
+  'most_innovative_valid_team',
 ];
 
 // Plain-language description of what each staffing option represents. AI agents
@@ -48,6 +49,8 @@ const OPTION_DESCRIPTIONS = {
   fastest_valid_team: 'The human team with the shortest estimated duration.',
   lowest_cost_valid_team: 'The cheapest human team.',
   lowest_risk_valid_team: 'The human team with the lowest risk score.',
+  most_innovative_valid_team:
+    'The valid team with the strongest cross-functional mix for exploring, prototyping, validating, and launching new ideas — while still covering the project’s required skills.',
 };
 
 // Stable empty set: AI agents are dynamic, so the uncertainty panel runs the
@@ -116,6 +119,9 @@ function OptionCard({ option, isRecommended }) {
       <Metric label="Estimated duration" value={`${option.estimated_duration}h`} />
       <Metric label="Risk" value={option.risk_score} />
       <Metric label="Confidence" value={option.confidence_score} />
+      {option.innovation_score !== undefined && (
+        <Metric label="Innovation" value={`${option.innovation_score}/100`} />
+      )}
 
       {option.ai_agents_added && option.ai_agents_added.length > 0 && (
         <div className="explanation" style={{ borderLeftColor: 'var(--green)' }}>
@@ -279,6 +285,16 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
           </select>
         </label>
       </div>
+
+      {objective === 'most_innovative' && (
+        <p className="section-hint" style={{ marginTop: 4 }}>
+          Most innovative still uses the project’s actual tasks, skills,
+          dependencies, effort, and constraints. It adds an innovation lens that
+          rewards cross-functional exploration, prototyping, validation, launch
+          capability, and innovation-skill coverage while penalizing overload,
+          missing skills, bottlenecks, and unhelpful AI review/rework.
+        </p>
+      )}
 
       <label className="field">
         <span>Project goal</span>

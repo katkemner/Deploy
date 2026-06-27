@@ -157,11 +157,12 @@ def test_project_response_keys_backward_compatible():
         "calibration_provenance",
     }
     assert required.issubset(set(body.keys()))
-    # All eight option keys present.
+    # All nine option keys present.
     assert set(body["options"].keys()) == {
         "current_team", "human_core_ai_gap_fill", "ai_first_eligible",
         "human_first_ai_assist", "recommended_balanced_team",
         "fastest_valid_team", "lowest_cost_valid_team", "lowest_risk_valid_team",
+        "most_innovative_valid_team",
     }
 
 

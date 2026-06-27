@@ -235,8 +235,11 @@ project and their current team, then compares **staffing options**.
 1. Fill in the project (name, goal, optional deadline-hours and budget targets,
    max team size, max AI agents) and pick an **optimization objective**
    (Balanced, Fastest delivery, Lowest cost, Best skill coverage, Best workload
-   balance, Lowest risk, or **Most innovative** — the boldest plan that leans
-   into AI, with the AI time/review tradeoff stated honestly).
+   balance, Lowest risk, or **Most innovative** — the valid team with the
+   strongest `innovation_score` for the actual project: a cross-functional,
+   human-led capacity to explore, prototype, validate, and launch, guarded by
+   the project's real coverage/overload/bottleneck/AI-burden so an unfit or
+   AI-churny team can't win).
 2. Edit the **Project Task Builder** — it preloads the 10 sample tasks; add,
    edit, or delete tasks and pick dependencies from existing task names. No CSV
    editing required. *(Optional shortcut: upload a brief to draft tasks — see
@@ -245,7 +248,7 @@ project and their current team, then compares **staffing options**.
    coverage preview shows gaps before you simulate.
 4. Click **Run Project Simulation**.
 
-**What you get back** — eight decision options, a comparison table, and a
+**What you get back** — nine decision options, a comparison table, and a
 deterministic recommendation summary. **You bring your own people** (upload a
 roster CSV); **AI agents are dynamic** — there is no fixed catalog and no
 "max agents" setting. For any task the routing marks AI-suitable, the engine
@@ -253,8 +256,8 @@ roster CSV); **AI agents are dynamic** — there is no fixed catalog and no
 from the same per-skill suitability sheet the router uses. The number of agents
 falls out of the work.
 
-The eight options are three AI-assignment **strategies**, the human baseline,
-and four optimizer picks — each run through the **same** scheduler and scorer:
+The nine options are three AI-assignment **strategies**, the human baseline,
+and five optimizer picks — each run through the **same** scheduler and scorer:
 
 | Option | Meaning |
 |---|---|
@@ -266,10 +269,11 @@ and four optimizer picks — each run through the **same** scheduler and scorer:
 | **Fastest Valid Team** | The human team with the shortest estimated duration. |
 | **Lowest-Cost Valid Team** | The cheapest human team. |
 | **Lowest-Risk Valid Team** | The human team with the lowest risk score. |
+| **Most Innovative Valid Team** | The valid team with the strongest cross-functional mix for exploring, prototyping, validating, and launching new ideas, scored by a deterministic `innovation_score` (0–100). |
 
 The strategies decide *who does which task* (human vs conjured AI) using the
 existing routing decisions; they never change the routing rules, the scheduler,
-or the scorer. The **recommendation compares all eight** and picks the one that
+or the scorer. The **recommendation compares all nine** and picks the one that
 best satisfies your objective, breaking ties in a fixed order (objective →
 confidence → least hidden review+rework → lower risk → lower cost → simplest
 team). If two options yield the same team and metrics (e.g. an all-human Current
