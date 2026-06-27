@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import ProjectTaskBuilder from './ProjectTaskBuilder.jsx';
 import UploadBriefPanel from './UploadBriefPanel.jsx';
+import RosterUploadPanel from './RosterUploadPanel.jsx';
 import CurrentTeamSelector from './CurrentTeamSelector.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
 import ProjectComparisonTable from './ProjectComparisonTable.jsx';
@@ -131,7 +132,7 @@ function OptionCard({ option, isRecommended }) {
   );
 }
 
-export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
+export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmployeesChange }) {
   const [projectName, setProjectName] = useState('Sample Project');
   const [projectGoal, setProjectGoal] = useState(
     'Staff and deliver the MVP with the right mix of people and AI agents.'
@@ -199,9 +200,20 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
     }
   }
 
-  function fillBestTeam() {
-    setSelectedHumans(new Set(['Sarah', 'Maya', 'Priya', 'Alex', 'Casey']));
-    setSelectedAis(new Set(['AI Research Agent', 'AI QA Reviewer']));
+  // Humans-first convenience: select every person in the loaded roster and no
+  // AI agents. Roster-agnostic (works after a custom upload), and leaving
+  // agents out lets the comparison reveal where AI actually helps.
+  function selectAllHumans() {
+    setSelectedHumans(new Set(employees.map((e) => e.name)));
+    setSelectedAis(new Set());
+  }
+
+  // After a new roster is uploaded, refresh the employee list and drop any
+  // prior selection (those names won't exist in the new roster).
+  function handleRosterUploaded() {
+    if (onEmployeesChange) onEmployeesChange();
+    setSelectedHumans(new Set());
+    setSelectedAis(new Set());
   }
 
   async function previewRouting() {
@@ -223,9 +235,11 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
     <div className="card" style={{ borderTop: '4px solid var(--primary)' }}>
       <h2 style={{ fontSize: 20 }}>Project Mode</h2>
       <p className="section-hint" style={{ fontSize: 14 }}>
-        What project are you trying to staff? Describe the work and your current
-        team, then compare staffing options.
+        What project are you trying to staff? Upload your team, describe the
+        work, then compare staffing options.
       </p>
+
+      <RosterUploadPanel employees={employees} onUploaded={handleRosterUploaded} />
 
       {/* Project fields */}
       <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -327,8 +341,8 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
         >
           {busy ? 'Comparing staffing options…' : 'Run Project Simulation'}
         </button>
-        <button className="btn" onClick={fillBestTeam} type="button">
-          Fill current best team
+        <button className="btn" onClick={selectAllHumans} type="button">
+          Select all my people
         </button>
         <button
           className="btn"
