@@ -213,25 +213,29 @@ def test_recommended_option_is_in_pareto_front():
 
 
 def test_recommendation_unchanged_by_pareto():
-    # The recommendation for each objective is exactly what Project Mode chose
-    # before Pareto existed (Pareto is additive and must not re-rank).
+    # The recommendation is the objective-optimal valid option, and Pareto (which
+    # is additive) must not re-rank it.
     fastest = client.post(
         "/simulate/project", json=_sample_project(optimization_objective="fastest")
     ).json()
-    assert fastest["recommendation"]["recommended_option"] == "fastest_valid_team"
+    rec_f = fastest["options"][fastest["recommendation"]["recommended_option"]]
+    valid_f = [o for o in fastest["options"].values() if o["is_valid_team"]]
+    assert rec_f["estimated_duration"] == min(o["estimated_duration"] for o in valid_f)
 
     cheapest = client.post(
         "/simulate/project", json=_sample_project(optimization_objective="lowest_cost")
     ).json()
-    assert cheapest["recommendation"]["recommended_option"] == "lowest_cost_valid_team"
+    rec_c = cheapest["options"][cheapest["recommendation"]["recommended_option"]]
+    valid_c = [o for o in cheapest["options"].values() if o["is_valid_team"]]
+    assert rec_c["estimated_cost"] == min(o["estimated_cost"] for o in valid_c)
 
 
 def test_pareto_front_is_read_only_options_unchanged():
     body = client.post("/simulate/project", json=_sample_project()).json()
-    # Project Mode still returns its five options + recommendation intact.
-    assert len(body["options"]) == 5
+    # Project Mode still returns its eight options + recommendation intact.
+    assert len(body["options"]) == 8
     assert body["recommendation"]["recommended_option"] in body["options"]
-    assert len(body["comparison_table"]) == 5
+    assert len(body["comparison_table"]) == 8
 
 
 # Allow running directly without pytest.

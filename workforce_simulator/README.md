@@ -244,21 +244,35 @@ project and their current team, then compares **staffing options**.
    coverage preview shows gaps before you simulate.
 4. Click **Run Project Simulation**.
 
-**What you get back** — five decision options, a comparison table, and a
-deterministic recommendation summary:
+**What you get back** — eight decision options, a comparison table, and a
+deterministic recommendation summary. **You bring your own people** (upload a
+roster CSV); **AI agents are dynamic** — there is no fixed catalog and no
+"max agents" setting. For any task the routing marks AI-suitable, the engine
+*conjures* an agent on demand, with its capability and effectiveness derived
+from the same per-skill suitability sheet the router uses. The number of agents
+falls out of the work.
+
+The eight options are three AI-assignment **strategies**, the human baseline,
+and four optimizer picks — each run through the **same** scheduler and scorer:
 
 | Option | Meaning |
 |---|---|
-| **Current Team** | Exactly the team you selected. |
-| **AI-Assisted Current Team** | Your humans + AI agents the engine greedily adds where they improve coverage, speed, cost, or risk. |
-| **Recommended Balanced Team** | The highest total-score valid team. |
-| **Fastest Valid Team** | The valid team with the shortest estimated duration. |
-| **Lowest-Cost Valid Team** | The cheapest valid team. |
+| **Current Team** | The people you selected, no AI added — your human baseline. |
+| **Human-Core + AI Gap Fill** | Humans lead; AI is added only for clearly-safe `AI_ONLY` work and to fill skills no human covers. |
+| **AI-First Eligible Tasks** | AI owns every task it can credibly own or draft (`AI_ONLY` / `AI_FIRST_HUMAN_REVIEW`, a human reviews); humans take the rest. |
+| **Human-First + AI Assist** | Humans own every task; AI never owns work. The pure-human plan. |
+| **Recommended Balanced Team** | The highest total-score human team. |
+| **Fastest Valid Team** | The human team with the shortest estimated duration. |
+| **Lowest-Cost Valid Team** | The cheapest human team. |
+| **Lowest-Risk Valid Team** | The human team with the lowest risk score. |
 
-The **Recommendation Summary** names the recommended option, why it won, the
-main bottleneck, the critical path, the biggest risk, and a concrete *what to
-change next* (e.g. “add a React-capable person”, “extend the deadline or move
-Frontend build off Alex”, “add the recommended AI agents”). A team is
+The strategies decide *who does which task* (human vs conjured AI) using the
+existing routing decisions; they never change the routing rules, the scheduler,
+or the scorer. The **recommendation compares all eight** and picks the one that
+best satisfies your objective, breaking ties in a fixed order (objective →
+confidence → least hidden review+rework → lower risk → lower cost → simplest
+team). If two options yield the same team and metrics (e.g. an all-human Current
+Team and Human-First), the later one is labelled **equivalent**. A team is
 “**valid**” when it covers every required skill.
 
 #### AI-assisted task drafting (from a brief, optional)

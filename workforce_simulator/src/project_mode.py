@@ -21,10 +21,13 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
+from dataclasses import replace as _replace
+
 import exporter
 import optimizer
 import pareto
 import routing
+import staffing_strategies
 from config_loader import SimConfig
 from models import Task, Team, Worker
 from simulator import SimulationResult, simulate_team
@@ -40,13 +43,25 @@ OBJECTIVES = {
     "lowest_risk",
 }
 
-# Maps each decision option to a human-friendly label.
+# Maps each decision option to a human-friendly label. The order here is also
+# the display order. AI agents are dynamic (conjured per plan, no fixed
+# catalog); the human/AI split differs per staffing strategy.
 OPTION_LABELS = {
     "current_team": "Current Team",
-    "ai_assisted_current_team": "AI-Assisted Current Team",
+    "human_core_ai_gap_fill": "Human-Core + AI Gap Fill",
+    "ai_first_eligible": "AI-First Eligible Tasks",
+    "human_first_ai_assist": "Human-First + AI Assist",
     "recommended_balanced_team": "Recommended Balanced Team",
     "fastest_valid_team": "Fastest Valid Team",
     "lowest_cost_valid_team": "Lowest-Cost Valid Team",
+    "lowest_risk_valid_team": "Lowest-Risk Valid Team",
+}
+
+# Which options are AI-assignment strategies (carry conjured-agent detail).
+_STRATEGY_OPTION = {
+    "human_core_ai_gap_fill": staffing_strategies.HUMAN_CORE,
+    "ai_first_eligible": staffing_strategies.AI_FIRST,
+    "human_first_ai_assist": staffing_strategies.HUMAN_FIRST,
 }
 
 
@@ -219,30 +234,43 @@ def _objective_key(objective: str):
     return table.get(objective, table["balanced"])
 
 
-# Preference order used only to break exact ties - favour reusing the
-# manager's actual team, then the engine's recommended teams.
+# Final, fully-deterministic preference order used only to break otherwise
+# exact ties. Lower number = preferred.
 _TIE_PRIORITY = {
-    "ai_assisted_current_team": 0,
-    "current_team": 1,
-    "recommended_balanced_team": 2,
-    "fastest_valid_team": 3,
-    "lowest_cost_valid_team": 4,
+    "human_core_ai_gap_fill": 0,
+    "ai_first_eligible": 1,
+    "current_team": 2,
+    "recommended_balanced_team": 3,
+    "human_first_ai_assist": 4,
+    "fastest_valid_team": 5,
+    "lowest_cost_valid_team": 6,
+    "lowest_risk_valid_team": 7,
 }
 
 
+def _net_burden(burden: dict) -> float:
+    """Hidden work a plan adds: review + rework minus AI time saved (lower=better)."""
+    return (
+        burden["review_burden_hours"]
+        + burden["expected_rework_hours"]
+        - burden["ai_time_saved"]
+    )
+
+
 def choose_recommendation(
-    options: Dict[str, SimulationResult], objective: str
+    options: Dict[str, SimulationResult], objective: str, burdens: Dict[str, dict]
 ) -> str:
     """Pick the recommended option key for the given objective.
 
-    Only valid (fully-staffed) options are eligible. If none are valid, the
-    option with the highest required coverage is returned as the least-bad
-    choice.
+    Only valid (fully-staffed) options are eligible. Ties are broken in the
+    approved order: objective metric, then higher confidence, then lower net
+    review+rework burden, then lower risk, then lower cost, then the simplest
+    (fewest-member) team, then a fixed static order. If no option is valid, the
+    one with the highest required coverage is returned as the least-bad choice.
     """
     key_fn, _ = _objective_key(objective)
     valid_keys = [k for k, r in options.items() if _is_valid(r)]
     if not valid_keys:
-        # Fallback: least-bad by required coverage, then total score.
         return max(
             options,
             key=lambda k: (
@@ -251,15 +279,20 @@ def choose_recommendation(
                 -_TIE_PRIORITY[k],
             ),
         )
-    return max(
-        valid_keys,
-        key=lambda k: (
-            key_fn(options[k]),
-            -options[k].estimated_cost,   # tie-break: cheaper wins
-            options[k].total_score,        # then better overall
-            -_TIE_PRIORITY[k],             # then prefer reusing the team
-        ),
-    )
+
+    def sort_key(k: str):
+        r = options[k]
+        return (
+            key_fn(r),                       # 1. chosen objective (higher better)
+            r.confidence_score,              # 2. most likely to deliver
+            -_net_burden(burdens[k]),        # 3. least hidden review+rework
+            -r.risk_score,                   # 4. lower risk
+            -r.estimated_cost,               # 5. lower cost
+            -len(r.team.members),            # 6. simplest team
+            -_TIE_PRIORITY[k],               # 7. fixed deterministic order
+        )
+
+    return max(valid_keys, key=sort_key)
 
 
 def _bottleneck(result: SimulationResult) -> Tuple[Optional[str], float, List[str]]:
@@ -305,14 +338,15 @@ def _next_action(
             f"add another person to share {busiest}'s load "
             f"(move {skill} off the critical path)"
         )
-    # If sticking with the current team but AI assist is strictly better, nudge it.
+    # If sticking with the current team but a gap-fill plan is strictly better,
+    # nudge toward it.
     if rec_key == "current_team":
-        assisted = options.get("ai_assisted_current_team")
-        if assisted is not None and _is_valid(assisted) and (
-            assisted.estimated_duration < rec.estimated_duration
-            or assisted.total_score > rec.total_score
+        gap_fill = options.get("human_core_ai_gap_fill")
+        if gap_fill is not None and _is_valid(gap_fill) and (
+            gap_fill.estimated_duration < rec.estimated_duration
+            or gap_fill.total_score > rec.total_score
         ):
-            return "add the recommended AI agents to the current team"
+            return "use the Human-Core + AI Gap Fill plan to add AI where it helps"
     if objective != "lowest_cost" and budget_target and rec.estimated_cost > budget_target * 0.9:
         return "change objective to lowest cost if budget matters more"
     return "reduce optional scope or proceed as planned"
@@ -531,46 +565,63 @@ def run_project_simulation(
     require_full = cfg.require_full_required_skill_coverage
 
     humans_by = {w.name: w for w in employees}
-    ais_by = {w.name: w for w in ai_agents}
 
     current_human_names = request.get("current_team_human_names", []) or []
-    current_ai_names = request.get("current_team_ai_agent_names", []) or []
     unknown_h = [n for n in current_human_names if n not in humans_by]
-    unknown_a = [n for n in current_ai_names if n not in ais_by]
-    if unknown_h or unknown_a:
+    if unknown_h:
         raise ProjectModeError(
-            "Current team contains unknown names. "
-            f"Unknown humans: {unknown_h}. Unknown AI agents: {unknown_a}."
+            f"Current team contains unknown humans: {unknown_h}."
         )
-    if not current_human_names and not current_ai_names:
-        raise ProjectModeError(
-            "Select at least one current team member (human or AI agent)."
-        )
+    if not current_human_names:
+        raise ProjectModeError("Select at least one team member.")
 
     current_humans = [humans_by[n] for n in current_human_names]
-    current_ais = [ais_by[n] for n in current_ai_names]
 
-    # 1. Current team exactly as selected.
+    # Task-level routing first - the strategies READ these decisions (they never
+    # change the routing rules). Build a task -> {decision, scores} map.
+    use_priors = bool(getattr(config, "use_public_priors_for_scoring", False))
+    routing_records = routing.route_tasks(
+        tasks, bindings=prior_bindings, use_priors=use_priors, calibration=calibration,
+        workbank_bindings=workbank_bindings, use_workbank=use_workbank,
+    )
+    routing_summary = routing.summarize_routing(routing_records)
+    routing_by_task = {
+        r["task"]: {"decision": r["routing"], "scores": r["scores"]}
+        for r in routing_records
+    }
+
+    # 1. Current team: exactly the humans selected (AI is dynamic, never a fixed
+    #    pick), assigned with no forced human/AI split.
     current_res = simulate_team(
-        Team(current_humans, current_ais), tasks, require_full, calibration
+        Team(current_humans, []), tasks, require_full, calibration
     )
 
-    # 2. AI-assisted current team: the human team + greedily chosen agents.
-    ai_added, ai_notes = build_ai_assisted_team(
-        current_humans, ai_agents, tasks, require_full,
-        cfg.max_ai_agents_per_team, calibration,
-    )
-    assisted_res = simulate_team(
-        Team(current_humans, ai_added), tasks, require_full, calibration
-    )
+    # 2. The three AI-assignment strategies over the selected humans. Each
+    #    conjures the agents its plan needs and pins the per-task human/AI split,
+    #    then runs through the same scheduler + scorer.
+    strategy_results: Dict[str, SimulationResult] = {}
+    strategy_agents: Dict[str, List[Worker]] = {}
+    strategy_notes: Dict[str, List[str]] = {}
+    for opt_key, strat in _STRATEGY_OPTION.items():
+        team, allowed, agents, notes = staffing_strategies.build_plan(
+            strat, current_humans, tasks, routing_by_task
+        )
+        strategy_results[opt_key] = simulate_team(
+            team, tasks, require_full, calibration, allowed_types=allowed
+        )
+        strategy_agents[opt_key] = agents
+        strategy_notes[opt_key] = notes
 
-    # 3. Whole population of valid team combinations.
+    # 3. Optimizer options over the FULL human roster, human-only. AI value is
+    #    offered by the strategies above, not by enumerating a fixed catalog, so
+    #    these are the best HUMAN teams per objective.
+    human_only_cfg = _replace(cfg, min_ai_agents_per_team=0, max_ai_agents_per_team=0)
     all_results = optimizer.simulate_all_teams(
-        employees, ai_agents, tasks, cfg, calibration
+        employees, [], tasks, human_only_cfg, calibration
     )
 
     # Score everything together so totals/cost-efficiency are comparable.
-    combined = all_results + [current_res, assisted_res]
+    combined = all_results + [current_res] + list(strategy_results.values())
     optimizer.finalize_scores(combined, cfg)
 
     valid = [r for r in all_results if _is_valid(r)]
@@ -587,56 +638,62 @@ def run_project_simulation(
             valid,
             key=lambda r: (r.estimated_cost, -r.total_score, r.estimated_duration, r.team.signature()),
         )[0]
+        lowest_risk = sorted(
+            valid,
+            key=lambda r: (r.risk_score, -r.total_score, r.estimated_cost, r.team.signature()),
+        )[0]
     else:
-        # No fully-staffed team possible; fall back to the current team so the
-        # response is still well-formed (clearly marked invalid downstream).
-        balanced = fastest = cheapest = current_res
+        # No fully-staffed human team possible; fall back to the current team so
+        # the response is still well-formed (marked invalid downstream).
+        balanced = fastest = cheapest = lowest_risk = current_res
 
     options: Dict[str, SimulationResult] = {
         "current_team": current_res,
-        "ai_assisted_current_team": assisted_res,
+        "human_core_ai_gap_fill": strategy_results["human_core_ai_gap_fill"],
+        "ai_first_eligible": strategy_results["ai_first_eligible"],
+        "human_first_ai_assist": strategy_results["human_first_ai_assist"],
         "recommended_balanced_team": balanced,
         "fastest_valid_team": fastest,
         "lowest_cost_valid_team": cheapest,
+        "lowest_risk_valid_team": lowest_risk,
     }
 
-    # Task-level routing (team-independent) + per-option review/rework burden.
-    use_priors = bool(getattr(config, "use_public_priors_for_scoring", False))
-    routing_records = routing.route_tasks(
-        tasks, bindings=prior_bindings, use_priors=use_priors, calibration=calibration,
-        workbank_bindings=workbank_bindings, use_workbank=use_workbank,
-    )
-    routing_summary = routing.summarize_routing(routing_records)
+    # Per-option review/rework burden from the (team-independent) routing.
     burdens = {k: _burden(options[k], routing_records) for k in OPTION_LABELS}
 
-    rec_key = choose_recommendation(options, objective)
+    rec_key = choose_recommendation(options, objective, burdens)
     recommendation = build_recommendation(
-        rec_key, options, objective, ai_added, ai_notes,
+        rec_key, options, objective,
+        strategy_agents.get(rec_key, []), strategy_notes.get(rec_key, []),
         request.get("deadline_target_hours"), request.get("budget_target"),
         burdens[rec_key],
     )
 
-    option_payload = {
-        "current_team": _option_dict(
-            "current_team", current_res, burdens["current_team"]
-        ),
-        "ai_assisted_current_team": _option_dict(
-            "ai_assisted_current_team", assisted_res,
-            burdens["ai_assisted_current_team"], ai_added, ai_notes
-        ),
-        "recommended_balanced_team": _option_dict(
-            "recommended_balanced_team", balanced, burdens["recommended_balanced_team"]
-        ),
-        "fastest_valid_team": _option_dict(
-            "fastest_valid_team", fastest, burdens["fastest_valid_team"]
-        ),
-        "lowest_cost_valid_team": _option_dict(
-            "lowest_cost_valid_team", cheapest, burdens["lowest_cost_valid_team"]
-        ),
-    }
+    option_payload: Dict[str, dict] = {}
+    for k in OPTION_LABELS:
+        if k in _STRATEGY_OPTION:
+            option_payload[k] = _option_dict(
+                k, options[k], burdens[k], strategy_agents[k], strategy_notes[k]
+            )
+        else:
+            option_payload[k] = _option_dict(k, options[k], burdens[k])
+
+    # Equivalence: when two options yield the same team AND the same key metrics
+    # (e.g. an all-human current team vs the Human-First plan), label the later
+    # one as equivalent to the first rather than presenting it as distinct.
+    _seen: Dict[tuple, str] = {}
+    equivalent_to: Dict[str, Optional[str]] = {}
+    for k in OPTION_LABELS:
+        r = options[k]
+        sig = (r.team.signature(), r.total_score, r.estimated_cost, r.estimated_duration)
+        equivalent_to[k] = _seen.get(sig)  # label of the first match, or None
+        _seen.setdefault(sig, OPTION_LABELS[k])
+    for k in OPTION_LABELS:
+        option_payload[k]["equivalent_to"] = equivalent_to[k]
 
     comparison_table = [
-        _comparison_row(k, options[k], burdens[k]) for k in OPTION_LABELS
+        {**_comparison_row(k, options[k], burdens[k]), "equivalent_to": equivalent_to[k]}
+        for k in OPTION_LABELS
     ]
 
     # Read-only Pareto-front preview over the same options/burdens. Computed

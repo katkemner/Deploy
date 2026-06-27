@@ -52,13 +52,20 @@ def _candidate_score(worker, task: Task, remaining_hours: float) -> float:
     return 0.40 * quality + 0.20 * cost_efficiency + 0.20 * speed + 0.20 * capacity
 
 
-def assign_tasks(team: Team, tasks: List[Task]) -> List[Assignment]:
+def assign_tasks(team: Team, tasks: List[Task], allowed_types=None) -> List[Assignment]:
     """Assign every task to the best available team member.
 
     Tasks are processed in priority order (priority 1 first). For each task
     we find members whose skills match, then pick the one with the highest
     candidate score given how much capacity they have left. A task with no
     skilled member is recorded as a missing-skill risk.
+
+    ``allowed_types`` (optional) maps a task name to the set of worker types
+    (``HUMAN`` / ``AI_AGENT``) permitted to own that task. It lets a staffing
+    strategy pin which kind of worker does each task (e.g. AI-First vs
+    Human-Core). When ``None`` (the default) assignment is unconstrained and
+    behaves exactly as before. A task whose allowed candidates are empty after
+    the filter is recorded as a missing-skill/gap, just like an unskilled task.
 
     The worker objects are not mutated; remaining capacity is tracked in a
     local dict so the same ``Team`` can be reused across simulations.
@@ -70,6 +77,9 @@ def assign_tasks(team: Team, tasks: List[Task]) -> List[Assignment]:
     assignments: List[Assignment] = []
     for task in ordered:
         candidates = [w for w in members if w.has_skill(task.required_skill)]
+        if allowed_types is not None and task.task in allowed_types:
+            allowed = allowed_types[task.task]
+            candidates = [w for w in candidates if w.type in allowed]
         if not candidates:
             assignments.append(
                 Assignment(
@@ -153,6 +163,7 @@ def simulate_team(
     tasks: List[Task],
     require_full_required_skill_coverage: bool = True,
     calibration: Dict[str, float] = None,
+    allowed_types=None,
 ) -> SimulationResult:
     """Assign + schedule ``team`` and compute every per-team metric.
 
@@ -160,9 +171,13 @@ def simulate_team(
     When supplied it scales the schedule (via the scheduler) and adds the
     skill-gap / context-switching penalties to the risk score. When ``None``
     (the default) every metric is computed exactly as before.
+
+    ``allowed_types`` (optional) pins which worker type may own each task (see
+    :func:`assign_tasks`); ``None`` leaves assignment unconstrained. Scoring and
+    scheduling are unchanged - only which member ends up on each task differs.
     """
     members = team.members
-    assignments = assign_tasks(team, tasks)
+    assignments = assign_tasks(team, tasks, allowed_types)
 
     # --- coverage (overall / required / optional) --------------------------
     required_tasks = [t for t in tasks if t.is_required]

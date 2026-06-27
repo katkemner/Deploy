@@ -24,24 +24,34 @@ const OBJECTIVES = [
 // The order option cards are displayed in.
 const OPTION_ORDER = [
   'current_team',
-  'ai_assisted_current_team',
+  'human_core_ai_gap_fill',
+  'ai_first_eligible',
+  'human_first_ai_assist',
   'recommended_balanced_team',
   'fastest_valid_team',
   'lowest_cost_valid_team',
+  'lowest_risk_valid_team',
 ];
 
-// Plain-language description of what each staffing option represents.
+// Plain-language description of what each staffing option represents. AI agents
+// are conjured dynamically per plan (no fixed catalog, no cap).
 const OPTION_DESCRIPTIONS = {
-  current_team: 'Exactly the people + AI agents you selected — your baseline.',
-  ai_assisted_current_team:
-    'Your humans plus the AI agents the engine adds where they improve coverage, speed, cost, or risk.',
-  recommended_balanced_team:
-    'The valid team with the best overall weighted score across all metrics.',
-  fastest_valid_team:
-    'The valid team with the shortest estimated duration (fully covers required skills).',
-  lowest_cost_valid_team:
-    'The cheapest valid team (fully covers required skills).',
+  current_team: 'The people you selected, with no AI added — your human baseline.',
+  human_core_ai_gap_fill:
+    'Humans lead the work; AI is added only for clearly-safe tasks and to fill skills no human covers.',
+  ai_first_eligible:
+    'AI takes every task it can credibly own or draft (a human reviews); humans take the rest.',
+  human_first_ai_assist:
+    'Humans own every task; AI never owns work — the pure-human plan.',
+  recommended_balanced_team: 'The best-scoring human team overall.',
+  fastest_valid_team: 'The human team with the shortest estimated duration.',
+  lowest_cost_valid_team: 'The cheapest human team.',
+  lowest_risk_valid_team: 'The human team with the lowest risk score.',
 };
+
+// Stable empty set: AI agents are dynamic, so the uncertainty panel runs the
+// selected humans only (no AI is ever hand-picked).
+const EMPTY_SET = new Set();
 
 function Metric({ label, value }) {
   return (
@@ -67,6 +77,12 @@ function OptionCard({ option, isRecommended }) {
       {isRecommended && (
         <div style={{ margin: '6px 0' }}>
           <span className="badge badge-critical">recommended</span>
+        </div>
+      )}
+
+      {option.equivalent_to && (
+        <div className="muted" style={{ margin: '4px 0', fontSize: 13 }}>
+          ≡ same team and metrics as <strong>{option.equivalent_to}</strong>
         </div>
       )}
 
@@ -142,12 +158,10 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
   const [deadlineHours, setDeadlineHours] = useState('120');
   const [budget, setBudget] = useState('20000');
   const [maxTeamSize, setMaxTeamSize] = useState(5);
-  const [maxAi, setMaxAi] = useState(2);
   const [objective, setObjective] = useState('balanced');
 
   const [tasks, setTasks] = useState([]);
   const [selectedHumans, setSelectedHumans] = useState(new Set());
-  const [selectedAis, setSelectedAis] = useState(new Set());
 
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -184,11 +198,11 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
         optimization_objective: objective,
         team_constraints: {
           max_humans_per_team: Number(maxTeamSize),
-          max_ai_agents_per_team: Number(maxAi),
         },
         tasks,
         current_team_human_names: [...selectedHumans],
-        current_team_ai_agent_names: [...selectedAis],
+        // AI agents are dynamic — the simulation conjures them; none are picked.
+        current_team_ai_agent_names: [],
       };
       const res = await api.runProjectSimulation(scenario);
       setResult(res);
@@ -205,7 +219,6 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
   // agents out lets the comparison reveal where AI actually helps.
   function selectAllHumans() {
     setSelectedHumans(new Set(employees.map((e) => e.name)));
-    setSelectedAis(new Set());
   }
 
   // After a new roster is uploaded, refresh the employee list and drop any
@@ -213,7 +226,6 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
   function handleRosterUploaded() {
     if (onEmployeesChange) onEmployeesChange();
     setSelectedHumans(new Set());
-    setSelectedAis(new Set());
   }
 
   async function previewRouting() {
@@ -306,15 +318,6 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
             onChange={(e) => setMaxTeamSize(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span>Max AI agents</span>
-          <input
-            type="number"
-            min="0"
-            value={maxAi}
-            onChange={(e) => setMaxAi(e.target.value)}
-          />
-        </label>
       </div>
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '8px 0 16px' }} />
@@ -324,12 +327,9 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
       <CurrentTeamSelector
         employees={employees}
-        aiAgents={aiAgents}
         tasks={tasks}
         selectedHumans={selectedHumans}
-        selectedAis={selectedAis}
         onHumansChange={setSelectedHumans}
-        onAisChange={setSelectedAis}
       />
 
       <div className="card-actions">
@@ -369,7 +369,7 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
       <UncertaintyPanel
         selectedHumans={selectedHumans}
-        selectedAis={selectedAis}
+        selectedAis={EMPTY_SET}
         tasks={tasks}
         deadlineHours={deadlineHours}
         budget={budget}

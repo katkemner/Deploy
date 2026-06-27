@@ -233,18 +233,21 @@ def test_project_simulation_returns_all_options():
     r = client.post("/simulate/project", json=_sample_project())
     assert r.status_code == 200
     body = r.json()
-    # All five decision options are present.
+    # All eight decision options are present.
     for key in (
         "current_team",
-        "ai_assisted_current_team",
+        "human_core_ai_gap_fill",
+        "ai_first_eligible",
+        "human_first_ai_assist",
         "recommended_balanced_team",
         "fastest_valid_team",
         "lowest_cost_valid_team",
+        "lowest_risk_valid_team",
     ):
         assert key in body["options"], key
         assert "total_score" in body["options"][key]
     # Comparison table has one row per option and a recommendation summary.
-    assert len(body["comparison_table"]) == 5
+    assert len(body["comparison_table"]) == 8
     assert body["recommendation"]["recommended_option"] in body["options"]
     assert body["recommendation"]["summary_text"]
     assert body["recommendation"]["critical_path"]
@@ -253,20 +256,20 @@ def test_project_simulation_returns_all_options():
 def test_project_current_team_returned_exactly():
     r = client.post("/simulate/project", json=_sample_project())
     current = r.json()["options"]["current_team"]
+    # Current team is the selected humans; AI is dynamic, never a fixed pick.
     assert current["team_members"] == ["Sarah", "Maya", "Priya", "Alex", "Casey"]
-    assert current["ai_agents"] == ["AI Research Agent", "AI QA Reviewer"]
+    assert current["ai_agents"] == []
 
 
-def test_project_ai_assisted_team_returned():
-    # Current team with no AI agents -> the assisted option should add some.
-    r = client.post(
-        "/simulate/project",
-        json=_sample_project(current_team_ai_agent_names=[]),
-    )
-    assisted = r.json()["options"]["ai_assisted_current_team"]
-    assert "ai_agents_added" in assisted
-    assert len(assisted["ai_agents_added"]) >= 1
-    assert len(assisted["ai_assist_notes"]) == len(assisted["ai_agents_added"])
+def test_project_ai_first_conjures_agents():
+    # AI-First should dynamically conjure agents for AI-eligible tasks.
+    r = client.post("/simulate/project", json=_sample_project())
+    ai_first = r.json()["options"]["ai_first_eligible"]
+    assert "ai_agents_added" in ai_first
+    assert len(ai_first["ai_agents_added"]) >= 1
+    assert len(ai_first["ai_assist_notes"]) == len(ai_first["ai_agents_added"])
+    # Conjured agents are dynamic AI agents, not a fixed catalog.
+    assert all(name.startswith("AI ") for name in ai_first["ai_agents_added"])
 
 
 def test_project_recommended_balanced_is_valid():
@@ -285,7 +288,12 @@ def test_project_fastest_is_shortest_among_options():
     balanced = body["options"]["recommended_balanced_team"]
     # Fastest valid team is no slower than the balanced team.
     assert fastest["estimated_duration"] <= balanced["estimated_duration"]
-    assert body["recommendation"]["recommended_option"] == "fastest_valid_team"
+    # The recommendation for the "fastest" objective achieves the shortest
+    # duration among all valid options (could be a strategy or an optimizer pick).
+    rec_key = body["recommendation"]["recommended_option"]
+    valid = [o for o in body["options"].values() if o["is_valid_team"]]
+    min_dur = min(o["estimated_duration"] for o in valid)
+    assert body["options"][rec_key]["estimated_duration"] == min_dur
 
 
 def test_project_lowest_cost_is_cheapest_among_options():
@@ -296,7 +304,12 @@ def test_project_lowest_cost_is_cheapest_among_options():
     cheapest = body["options"]["lowest_cost_valid_team"]
     balanced = body["options"]["recommended_balanced_team"]
     assert cheapest["estimated_cost"] <= balanced["estimated_cost"]
-    assert body["recommendation"]["recommended_option"] == "lowest_cost_valid_team"
+    # The recommendation for the "lowest_cost" objective achieves the lowest cost
+    # among all valid options (a dynamic-AI strategy may undercut the human team).
+    rec_key = body["recommendation"]["recommended_option"]
+    valid = [o for o in body["options"].values() if o["is_valid_team"]]
+    min_cost = min(o["estimated_cost"] for o in valid)
+    assert body["options"][rec_key]["estimated_cost"] == min_cost
 
 
 def test_project_invalid_current_team_is_handled():
@@ -382,7 +395,7 @@ def test_project_includes_routing_and_review_burden():
         assert key in row
 
     # Each option exposes its reviewer-bottleneck detail.
-    opt = body["options"]["ai_assisted_current_team"]
+    opt = body["options"]["ai_first_eligible"]
     assert "reviewer_bottleneck" in opt
     assert "message" in opt["reviewer_bottleneck"]
 
@@ -494,7 +507,7 @@ def test_route_tasks_provenance_marks_manual_override():
 def test_project_mode_routing_has_provenance_and_still_works():
     body = client.post("/simulate/project", json=_sample_project()).json()
     # Project Mode still returns all five options (behaviour unchanged).
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 8
     assert body["recommendation"]["recommended_option"] in body["options"]
     # And its task routing now carries provenance.
     row = body["task_routing"][0]
@@ -535,7 +548,7 @@ def test_priors_do_not_change_routing_behaviour():
 def test_priors_do_not_change_project_mode():
     # Project Mode still returns the five options and a recommendation.
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 8
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -592,7 +605,7 @@ def test_prior_matching_does_not_change_routing_or_project_results():
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     # Project Mode options/recommendation unchanged in shape.
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 8
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -654,7 +667,7 @@ def test_enabled_priors_affect_scoring_only_when_on():
         assert _has_prior_source(body["task_routing"])
         # Project Mode still returns five options with priors on.
         proj = client.post("/simulate/project", json=_sample_project()).json()
-        assert len(proj["options"]) == 5
+        assert len(proj["options"]) == 8
     finally:
         client.post("/config", json={
             k: v for k, v in original.items() if k != "weight_provenance"
@@ -732,7 +745,7 @@ def test_calibration_does_not_change_routing_or_project_mode():
     assert decisions["Documentation"] == "AI_ONLY"
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 8
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -812,7 +825,7 @@ def test_calibration_apply_does_not_change_routing_or_project_mode():
     assert decisions["Documentation"] == "AI_ONLY"
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 8
     _reset_calibration_store()
 
 

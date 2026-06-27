@@ -46,21 +46,32 @@ def _sample_project(**overrides):
 # Stable recommendations + routing (no scoring/routing behaviour change)
 # ---------------------------------------------------------------------------
 
+def _valid_options(body):
+    return [o for o in body["options"].values() if o["is_valid_team"]]
+
+
 def test_sample_project_recommendation_is_stable():
-    # Balanced objective on the sample inputs recommends the current team.
+    # Balanced objective recommends the highest-total-score valid option.
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert body["recommendation"]["recommended_option"] == "current_team"
+    rec = body["options"][body["recommendation"]["recommended_option"]]
+    assert rec["total_score"] == max(o["total_score"] for o in _valid_options(body))
 
 
 def test_objective_recommendations_are_stable():
     fastest = client.post(
         "/simulate/project", json=_sample_project(optimization_objective="fastest")
     ).json()
-    assert fastest["recommendation"]["recommended_option"] == "fastest_valid_team"
+    rec_f = fastest["options"][fastest["recommendation"]["recommended_option"]]
+    assert rec_f["estimated_duration"] == min(
+        o["estimated_duration"] for o in _valid_options(fastest)
+    )
     cheapest = client.post(
         "/simulate/project", json=_sample_project(optimization_objective="lowest_cost")
     ).json()
-    assert cheapest["recommendation"]["recommended_option"] == "lowest_cost_valid_team"
+    rec_c = cheapest["options"][cheapest["recommendation"]["recommended_option"]]
+    assert rec_c["estimated_cost"] == min(
+        o["estimated_cost"] for o in _valid_options(cheapest)
+    )
 
 
 def test_sample_routing_decisions_are_stable():
@@ -146,10 +157,11 @@ def test_project_response_keys_backward_compatible():
         "calibration_provenance",
     }
     assert required.issubset(set(body.keys()))
-    # All five option keys present.
+    # All eight option keys present.
     assert set(body["options"].keys()) == {
-        "current_team", "ai_assisted_current_team", "recommended_balanced_team",
-        "fastest_valid_team", "lowest_cost_valid_team",
+        "current_team", "human_core_ai_gap_fill", "ai_first_eligible",
+        "human_first_ai_assist", "recommended_balanced_team",
+        "fastest_valid_team", "lowest_cost_valid_team", "lowest_risk_valid_team",
     }
 
 
