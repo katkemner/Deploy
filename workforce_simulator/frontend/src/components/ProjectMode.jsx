@@ -19,6 +19,7 @@ const OBJECTIVES = [
   ['Best skill coverage', 'best_skill_coverage'],
   ['Best workload balance', 'best_workload_balance'],
   ['Lowest risk', 'lowest_risk'],
+  ['Most innovative', 'most_innovative'],
 ];
 
 // The order option cards are displayed in.

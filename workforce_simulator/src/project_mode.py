@@ -41,6 +41,7 @@ OBJECTIVES = {
     "best_skill_coverage",
     "best_workload_balance",
     "lowest_risk",
+    "most_innovative",
 }
 
 # Maps each decision option to a human-friendly label. The order here is also
@@ -212,24 +213,34 @@ def _assist_note(agent: Worker, before: SimulationResult, after: SimulationResul
 # ---------------------------------------------------------------------------
 
 def _objective_key(objective: str):
-    """Return a (key_fn, reverse) used to pick the best option for an objective.
+    """Return a ``(key_fn, phrase)`` used to pick the best option for an objective.
 
-    ``key_fn`` maps a result to a sort value; the option with the *max* key
-    wins (so "lower is better" metrics are negated).
+    ``key_fn(result, burden)`` maps a scored option (and its review/rework burden)
+    to a sort value; the option with the *max* key wins (so "lower is better"
+    metrics are negated). ``burden`` lets AI-aware objectives (e.g. Most
+    Innovative) use the net AI benefit without touching the scorer.
     """
     table = {
-        "balanced": (lambda r: r.total_score, "highest overall score"),
-        "fastest": (lambda r: -r.estimated_duration, "shortest duration"),
-        "lowest_cost": (lambda r: -r.estimated_cost, "lowest cost"),
+        "balanced": (lambda r, b: r.total_score, "highest overall score"),
+        "fastest": (lambda r, b: -r.estimated_duration, "shortest duration"),
+        "lowest_cost": (lambda r, b: -r.estimated_cost, "lowest cost"),
         "best_skill_coverage": (
-            lambda r: (r.required_skill_coverage_score, r.optional_skill_coverage_score),
+            lambda r, b: (r.required_skill_coverage_score, r.optional_skill_coverage_score),
             "best skill coverage",
         ),
         "best_workload_balance": (
-            lambda r: r.workload_balance_score,
+            lambda r, b: r.workload_balance_score,
             "best workload balance",
         ),
-        "lowest_risk": (lambda r: -r.risk_score, "lowest risk"),
+        "lowest_risk": (lambda r, b: -r.risk_score, "lowest risk"),
+        # Most Innovative = the boldest lean into AI: the valid plan that puts the
+        # most work on AI (most AI-owned tasks), tie-broken toward the plan where
+        # that AI pays off best. The recommendation's AI-time verdict still states
+        # honestly whether the AI saves time or shifts it to reviewers.
+        "most_innovative": (
+            lambda r, b: (len(r.team.ai_agents), b["net_time_saved"]),
+            "the boldest use of AI",
+        ),
     }
     return table.get(objective, table["balanced"])
 
@@ -283,7 +294,7 @@ def choose_recommendation(
     def sort_key(k: str):
         r = options[k]
         return (
-            key_fn(r),                       # 1. chosen objective (higher better)
+            key_fn(r, burdens[k]),           # 1. chosen objective (higher better)
             r.confidence_score,              # 2. most likely to deliver
             -_net_burden(burdens[k]),        # 3. least hidden review+rework
             -r.risk_score,                   # 4. lower risk

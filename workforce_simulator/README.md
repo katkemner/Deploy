@@ -235,7 +235,8 @@ project and their current team, then compares **staffing options**.
 1. Fill in the project (name, goal, optional deadline-hours and budget targets,
    max team size, max AI agents) and pick an **optimization objective**
    (Balanced, Fastest delivery, Lowest cost, Best skill coverage, Best workload
-   balance, or Lowest risk).
+   balance, Lowest risk, or **Most innovative** — the boldest plan that leans
+   into AI, with the AI time/review tradeoff stated honestly).
 2. Edit the **Project Task Builder** — it preloads the 10 sample tasks; add,
    edit, or delete tasks and pick dependencies from existing task names. No CSV
    editing required. *(Optional shortcut: upload a brief to draft tasks — see

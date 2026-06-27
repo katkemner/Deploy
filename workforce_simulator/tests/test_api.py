@@ -272,6 +272,22 @@ def test_project_ai_first_conjures_agents():
     assert all(name.startswith("AI ") for name in ai_first["ai_agents_added"])
 
 
+def test_project_most_innovative_leans_into_ai():
+    # "Most Innovative" = the boldest valid plan that leans into AI (most
+    # AI-owned tasks). On the sample that is the AI-First strategy.
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(optimization_objective="most_innovative"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    rec_key = body["recommendation"]["recommended_option"]
+    valid = {k: o for k, o in body["options"].items() if o["is_valid_team"]}
+    most_ai = max(len(o["ai_agents"]) for o in valid.values())
+    assert len(valid[rec_key]["ai_agents"]) == most_ai
+    assert most_ai >= 1  # it actually uses AI
+
+
 def test_project_recommended_balanced_is_valid():
     r = client.post("/simulate/project", json=_sample_project())
     balanced = r.json()["options"]["recommended_balanced_team"]

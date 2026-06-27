@@ -210,6 +210,7 @@ OBJECTIVE_CHOICES = (
     "best_skill_coverage",
     "best_workload_balance",
     "lowest_risk",
+    "most_innovative",
 )
 
 
