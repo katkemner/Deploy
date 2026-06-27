@@ -164,7 +164,7 @@ def test_workbank_preview_does_not_change_routing_or_options():
     decisions = {r["task"]: r["routing"] for r in body["task_routing"]}
     assert decisions["Documentation"] == "AI_ONLY"
     assert decisions["Product strategy"] == "HUMAN_ONLY"
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 6
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 

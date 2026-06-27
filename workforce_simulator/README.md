@@ -235,7 +235,11 @@ project and their current team, then compares **staffing options**.
 1. Fill in the project (name, goal, optional deadline-hours and budget targets,
    max team size, max AI agents) and pick an **optimization objective**
    (Balanced, Fastest delivery, Lowest cost, Best skill coverage, Best workload
-   balance, or Lowest risk).
+   balance, Lowest risk, or **Most innovative** — the valid team with the
+   strongest `innovation_score` for the actual project: cross-functional,
+   human-led capacity to explore, prototype, validate, and launch, guarded by
+   the project's real coverage/overload/bottleneck/AI-burden so an unfit or
+   AI-churny team can't win).
 2. Edit the **Project Task Builder** — it preloads the 10 sample tasks; add,
    edit, or delete tasks and pick dependencies from existing task names. No CSV
    editing required. *(Optional shortcut: upload a brief to draft tasks — see
@@ -244,7 +248,7 @@ project and their current team, then compares **staffing options**.
    coverage preview shows gaps before you simulate.
 4. Click **Run Project Simulation**.
 
-**What you get back** — five decision options, a comparison table, and a
+**What you get back** — six decision options, a comparison table, and a
 deterministic recommendation summary:
 
 | Option | Meaning |
@@ -254,6 +258,7 @@ deterministic recommendation summary:
 | **Recommended Balanced Team** | The highest total-score valid team. |
 | **Fastest Valid Team** | The valid team with the shortest estimated duration. |
 | **Lowest-Cost Valid Team** | The cheapest valid team. |
+| **Most Innovative Valid Team** | The valid team with the strongest cross-functional mix for exploring, prototyping, validating, and launching new ideas, scored by a deterministic `innovation_score` (0–100). |
 
 The **Recommendation Summary** names the recommended option, why it won, the
 main bottleneck, the critical path, the biggest risk, and a concrete *what to

@@ -18,6 +18,7 @@ const OBJECTIVES = [
   ['Best skill coverage', 'best_skill_coverage'],
   ['Best workload balance', 'best_workload_balance'],
   ['Lowest risk', 'lowest_risk'],
+  ['Most innovative', 'most_innovative'],
 ];
 
 // The order option cards are displayed in.
@@ -27,6 +28,7 @@ const OPTION_ORDER = [
   'recommended_balanced_team',
   'fastest_valid_team',
   'lowest_cost_valid_team',
+  'most_innovative_valid_team',
 ];
 
 // Plain-language description of what each staffing option represents.
@@ -40,6 +42,8 @@ const OPTION_DESCRIPTIONS = {
     'The valid team with the shortest estimated duration (fully covers required skills).',
   lowest_cost_valid_team:
     'The cheapest valid team (fully covers required skills).',
+  most_innovative_valid_team:
+    'The valid team with the strongest cross-functional mix for exploring, prototyping, validating, and launching new ideas — while still covering the project’s required skills.',
 };
 
 function Metric({ label, value }) {
@@ -98,6 +102,9 @@ function OptionCard({ option, isRecommended }) {
       <Metric label="Estimated duration" value={`${option.estimated_duration}h`} />
       <Metric label="Risk" value={option.risk_score} />
       <Metric label="Confidence" value={option.confidence_score} />
+      {option.innovation_score !== undefined && (
+        <Metric label="Innovation" value={`${option.innovation_score}/100`} />
+      )}
 
       {option.ai_agents_added && option.ai_agents_added.length > 0 && (
         <div className="explanation" style={{ borderLeftColor: 'var(--green)' }}>
@@ -252,6 +259,16 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
           </select>
         </label>
       </div>
+
+      {objective === 'most_innovative' && (
+        <p className="section-hint" style={{ marginTop: 4 }}>
+          Most innovative still uses the project’s actual tasks, skills,
+          dependencies, effort, and constraints. It adds an innovation lens that
+          rewards cross-functional exploration, prototyping, validation, launch
+          capability, and innovation-skill coverage while penalizing overload,
+          missing skills, bottlenecks, and unhelpful AI review/rework.
+        </p>
+      )}
 
       <label className="field">
         <span>Project goal</span>
