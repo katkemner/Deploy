@@ -233,21 +233,52 @@ def test_project_simulation_returns_all_options():
     r = client.post("/simulate/project", json=_sample_project())
     assert r.status_code == 200
     body = r.json()
-    # All five decision options are present.
+    # All six decision options are present.
     for key in (
         "current_team",
         "ai_assisted_current_team",
         "recommended_balanced_team",
         "fastest_valid_team",
         "lowest_cost_valid_team",
+        "most_innovative_valid_team",
     ):
         assert key in body["options"], key
         assert "total_score" in body["options"][key]
+        assert "innovation_score" in body["options"][key]
     # Comparison table has one row per option and a recommendation summary.
-    assert len(body["comparison_table"]) == 5
+    assert len(body["comparison_table"]) == 6
     assert body["recommendation"]["recommended_option"] in body["options"]
     assert body["recommendation"]["summary_text"]
     assert body["recommendation"]["critical_path"]
+
+
+def test_project_most_innovative_objective_and_output():
+    # "Most Innovative" objective recommends the valid option with the highest
+    # innovation_score; the score is surfaced and an AI-heavy plan doesn't win.
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(optimization_objective="most_innovative"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    # The Most Innovative Valid Team output exists with a 0-100 score + 9 parts.
+    mivt = body["options"]["most_innovative_valid_team"]
+    assert 0 <= mivt["innovation_score"] <= 100
+    assert len(mivt["innovation_components"]) == 9
+    # Recommendation picks the highest innovation_score among valid options.
+    rec_key = body["recommendation"]["recommended_option"]
+    valid = {k: o for k, o in body["options"].items() if o["is_valid_team"]}
+    best = max(o["innovation_score"] for o in valid.values())
+    assert valid[rec_key]["innovation_score"] == best
+    assert body["recommendation"]["innovation_score"] == best
+
+
+def test_project_innovation_rejects_unknown_objective():
+    r = client.post(
+        "/simulate/project",
+        json=_sample_project(optimization_objective="bogus_objective"),
+    )
+    assert r.status_code == 422  # schema rejects unknown objective
 
 
 def test_project_current_team_returned_exactly():
@@ -494,7 +525,7 @@ def test_route_tasks_provenance_marks_manual_override():
 def test_project_mode_routing_has_provenance_and_still_works():
     body = client.post("/simulate/project", json=_sample_project()).json()
     # Project Mode still returns all five options (behaviour unchanged).
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 6
     assert body["recommendation"]["recommended_option"] in body["options"]
     # And its task routing now carries provenance.
     row = body["task_routing"][0]
@@ -535,7 +566,7 @@ def test_priors_do_not_change_routing_behaviour():
 def test_priors_do_not_change_project_mode():
     # Project Mode still returns the five options and a recommendation.
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 6
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -592,7 +623,7 @@ def test_prior_matching_does_not_change_routing_or_project_results():
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     # Project Mode options/recommendation unchanged in shape.
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 6
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -654,7 +685,7 @@ def test_enabled_priors_affect_scoring_only_when_on():
         assert _has_prior_source(body["task_routing"])
         # Project Mode still returns five options with priors on.
         proj = client.post("/simulate/project", json=_sample_project()).json()
-        assert len(proj["options"]) == 5
+        assert len(proj["options"]) == 6
     finally:
         client.post("/config", json={
             k: v for k, v in original.items() if k != "weight_provenance"
@@ -732,7 +763,7 @@ def test_calibration_does_not_change_routing_or_project_mode():
     assert decisions["Documentation"] == "AI_ONLY"
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 6
     assert body["recommendation"]["recommended_option"] in body["options"]
 
 
@@ -812,7 +843,7 @@ def test_calibration_apply_does_not_change_routing_or_project_mode():
     assert decisions["Documentation"] == "AI_ONLY"
     assert decisions["Product strategy"] == "HUMAN_ONLY"
     body = client.post("/simulate/project", json=_sample_project()).json()
-    assert len(body["options"]) == 5
+    assert len(body["options"]) == 6
     _reset_calibration_store()
 
 

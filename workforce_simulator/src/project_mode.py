@@ -22,6 +22,7 @@ from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
 import exporter
+import innovation
 import optimizer
 import pareto
 import routing
@@ -38,6 +39,7 @@ OBJECTIVES = {
     "best_skill_coverage",
     "best_workload_balance",
     "lowest_risk",
+    "most_innovative",
 }
 
 # Maps each decision option to a human-friendly label.
@@ -47,6 +49,7 @@ OPTION_LABELS = {
     "recommended_balanced_team": "Recommended Balanced Team",
     "fastest_valid_team": "Fastest Valid Team",
     "lowest_cost_valid_team": "Lowest-Cost Valid Team",
+    "most_innovative_valid_team": "Most Innovative Valid Team",
 }
 
 
@@ -215,6 +218,16 @@ def _objective_key(objective: str):
             "best workload balance",
         ),
         "lowest_risk": (lambda r: -r.risk_score, "lowest risk"),
+        # Most Innovative = the valid team with the strongest innovation_score
+        # for THIS project. Ties break by lower risk, then shorter duration, then
+        # lower cost (encoded in the key tuple so they apply first).
+        "most_innovative": (
+            lambda r: (
+                r.innovation_score, -r.risk_score,
+                -r.estimated_duration, -r.estimated_cost,
+            ),
+            "the strongest innovation capacity for this project",
+        ),
     }
     return table.get(objective, table["balanced"])
 
@@ -227,6 +240,7 @@ _TIE_PRIORITY = {
     "recommended_balanced_team": 2,
     "fastest_valid_team": 3,
     "lowest_cost_valid_team": 4,
+    "most_innovative_valid_team": 5,
 }
 
 
@@ -403,10 +417,20 @@ def build_recommendation(
     ai_time_verdict = _ai_time_verdict(burden)
     reviewer_note = burden["reviewer_bottleneck"]["message"]
 
+    # For the Most-Innovative objective, lead with the score and tie-breaker.
+    innovation_clause = ""
+    if objective == "most_innovative":
+        innovation_clause = (
+            f"Innovation score {rec.innovation_score:.0f}/100 (highest among valid "
+            "options; ties broken by lower risk, then shorter duration, then "
+            "lower cost). "
+        )
+
     summary_text = (
         f"Recommended: {label}. It wins on {why_phrase}, covering "
         f"{rec.required_skill_coverage_score:.0f}% of required skills "
         f"({rec.optional_skill_coverage_score:.0f}% optional), {', '.join(tradeoff_bits)}. "
+        f"{innovation_clause}"
         f"AI contribution: {ai_contribution}. "
         f"{ai_time_verdict} "
         f"Main bottleneck: {bottleneck_text}. "
@@ -425,6 +449,8 @@ def build_recommendation(
         "ai_time_verdict": ai_time_verdict,
         "reviewer_bottleneck_note": reviewer_note,
         "what_to_change_next": next_action,
+        "innovation_score": rec.innovation_score,
+        "innovation_components": rec.innovation_components,
         "summary_text": summary_text,
     }
 
@@ -457,6 +483,8 @@ def _option_dict(
     data["ai_time_saved"] = burden["ai_time_saved"]
     data["net_time_saved"] = burden["net_time_saved"]
     data["reviewer_bottleneck"] = burden["reviewer_bottleneck"]
+    data["innovation_score"] = result.innovation_score
+    data["innovation_components"] = result.innovation_components
     if ai_added is not None:
         data["ai_agents_added"] = [w.name for w in ai_added]
         data["ai_assist_notes"] = ai_notes or []
@@ -477,6 +505,7 @@ def _comparison_row(key: str, result: SimulationResult, burden: dict) -> dict:
         "productivity": result.productivity_score,
         "risk": result.risk_score,
         "confidence": result.confidence_score,
+        "innovation_score": result.innovation_score,
         "review_burden_hours": burden["review_burden_hours"],
         "expected_rework_hours": burden["expected_rework_hours"],
         "net_ai_time_saved": burden["net_time_saved"],
@@ -573,6 +602,19 @@ def run_project_simulation(
     combined = all_results + [current_res, assisted_res]
     optimizer.finalize_scores(combined, cfg)
 
+    # Task-level routing (team-independent). Computed before the innovation lens
+    # because that lens reads each option's review/rework burden.
+    use_priors = bool(getattr(config, "use_public_priors_for_scoring", False))
+    routing_records = routing.route_tasks(
+        tasks, bindings=prior_bindings, use_priors=use_priors, calibration=calibration,
+        workbank_bindings=workbank_bindings, use_workbank=use_workbank,
+    )
+    routing_summary = routing.summarize_routing(routing_records)
+    routing_by_task = {
+        r["task"]: {"decision": r["routing"], "scores": r["scores"]}
+        for r in routing_records
+    }
+
     valid = [r for r in all_results if _is_valid(r)]
     if valid:
         balanced = sorted(
@@ -587,10 +629,25 @@ def run_project_simulation(
             valid,
             key=lambda r: (r.estimated_cost, -r.total_score, r.estimated_duration, r.team.signature()),
         )[0]
+        # Most Innovative Valid Team: score every valid candidate on the
+        # innovation lens, then pick the highest (ties: lower risk, then shorter
+        # duration, then lower cost). Uses the project's real tasks/coverage/etc.
+        for r in valid:
+            b = _burden(r, routing_records)
+            r.innovation_score, r.innovation_components = innovation.score(
+                r, routing_by_task, b
+            )
+        most_innovative = sorted(
+            valid,
+            key=lambda r: (
+                -r.innovation_score, r.risk_score,
+                r.estimated_duration, r.estimated_cost, r.team.signature(),
+            ),
+        )[0]
     else:
         # No fully-staffed team possible; fall back to the current team so the
         # response is still well-formed (clearly marked invalid downstream).
-        balanced = fastest = cheapest = current_res
+        balanced = fastest = cheapest = most_innovative = current_res
 
     options: Dict[str, SimulationResult] = {
         "current_team": current_res,
@@ -598,16 +655,19 @@ def run_project_simulation(
         "recommended_balanced_team": balanced,
         "fastest_valid_team": fastest,
         "lowest_cost_valid_team": cheapest,
+        "most_innovative_valid_team": most_innovative,
     }
 
-    # Task-level routing (team-independent) + per-option review/rework burden.
-    use_priors = bool(getattr(config, "use_public_priors_for_scoring", False))
-    routing_records = routing.route_tasks(
-        tasks, bindings=prior_bindings, use_priors=use_priors, calibration=calibration,
-        workbank_bindings=workbank_bindings, use_workbank=use_workbank,
-    )
-    routing_summary = routing.summarize_routing(routing_records)
+    # Per-option review/rework burden from the (team-independent) routing.
     burdens = {k: _burden(options[k], routing_records) for k in OPTION_LABELS}
+
+    # Innovation lens for every option (the Most-Innovative objective ranks on
+    # it). Separate from the existing scorer; uses the project's real
+    # tasks/coverage/overload/slack/AI-burden plus capability coverage.
+    for k in OPTION_LABELS:
+        options[k].innovation_score, options[k].innovation_components = innovation.score(
+            options[k], routing_by_task, burdens[k]
+        )
 
     rec_key = choose_recommendation(options, objective)
     recommendation = build_recommendation(
@@ -632,6 +692,10 @@ def run_project_simulation(
         ),
         "lowest_cost_valid_team": _option_dict(
             "lowest_cost_valid_team", cheapest, burdens["lowest_cost_valid_team"]
+        ),
+        "most_innovative_valid_team": _option_dict(
+            "most_innovative_valid_team", most_innovative,
+            burdens["most_innovative_valid_team"]
         ),
     }
 
