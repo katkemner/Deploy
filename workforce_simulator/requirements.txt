@@ -15,3 +15,7 @@ python-multipart
 python-docx
 pypdf
 anthropic
+
+# Employee Digital Twin Seed upload: read .xlsx seed files (pandas read_excel
+# needs openpyxl). .csv uses pandas directly.
+openpyxl
