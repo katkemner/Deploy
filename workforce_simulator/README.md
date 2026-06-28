@@ -245,7 +245,10 @@ project and their current team, then compares **staffing options**.
    profiles used for simulation — not full digital twins yet.* Real simulation
    is **gated**: until you upload a seed or choose the demo roster, the Run
    button is disabled and shows *“Upload employee data or choose demo roster.”*
-   A badge shows **Uploaded seed active** or **Demo roster active**.
+   A badge shows **Uploaded seed active** or **Demo roster active**. *Note:* the
+   seed controls the active employee set used for team selection and simulation;
+   the brief-to-task AI draft still uses the existing demo skill vocabulary, so
+   generated task skills may need a quick edit to align with the uploaded seed.
 1. Fill in the project (name, goal, optional deadline-hours and budget targets,
    max team size, max AI agents) and pick an **optimization objective**
    (Balanced, Fastest delivery, Lowest cost, Best skill coverage, Best workload

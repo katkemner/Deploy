@@ -105,6 +105,12 @@ export default function EmployeeSeedUpload({ status, onActivated }) {
         innovation_capability_tags, and more (captured for context; they don’t
         affect scoring).
       </p>
+      <p className="section-hint">
+        Note: this seed controls the active employee set used for team selection
+        and simulation. The brief-to-task AI draft still uses the existing demo
+        skill vocabulary, so generated task skills may need a quick edit to align
+        with your uploaded employee seed.
+      </p>
 
       {/* Validation report */}
       {src === 'uploaded' && report && (
