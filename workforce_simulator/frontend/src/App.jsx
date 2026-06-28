@@ -80,6 +80,7 @@ export default function App() {
           employees={employees}
           aiAgents={aiAgents}
           sampleTasks={tasks}
+          onEmployeesChange={refreshEmployees}
         />
 
         {/* SECONDARY: raw data, uploads, config, manual/full simulation */}

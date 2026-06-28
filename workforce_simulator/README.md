@@ -232,6 +232,20 @@ project and their current team, then compares **staffing options**.
 
 **How to use it:**
 
+0. **Load your team — Employee Digital Twin Seed Upload.** Upload an employee
+   seed file (`.xlsx`/`.csv`) to use your own people, or click **Use demo
+   roster**. The uploaded file becomes the active roster **for the session
+   only** (in memory; nothing is written to disk). Required columns:
+   `name, role/job_title, department/team, skills, capacity_hours,
+   workload_hours` (an `employee_id` is generated if absent); `cost_rate` and
+   `quality_score` default to 75 and 7 if missing and are **flagged** in the
+   validation report. **Sensitive columns** (DOB, address, SSN/ID, contact,
+   bank, medical, demographics, visa, disciplinary, …) are **dropped on ingest,
+   never stored or returned**, and listed in the report. These are *seed
+   profiles used for simulation — not full digital twins yet.* Real simulation
+   is **gated**: until you upload a seed or choose the demo roster, the Run
+   button is disabled and shows *“Upload employee data or choose demo roster.”*
+   A badge shows **Uploaded seed active** or **Demo roster active**.
 1. Fill in the project (name, goal, optional deadline-hours and budget targets,
    max team size, max AI agents) and pick an **optimization objective**
    (Balanced, Fastest delivery, Lowest cost, Best skill coverage, Best workload

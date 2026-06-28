@@ -127,6 +127,11 @@ export const api = {
   rejectCalibration: (proposalIds) =>
     jsonPost('/calibration/reject', { proposal_ids: proposalIds }),
   uploadEmployees: (file) => uploadFile('/upload/employees', file),
+  // Employee Digital Twin Seed: upload a seed file (.csv/.xlsx) as the active
+  // in-memory roster, or explicitly choose the demo roster.
+  uploadEmployeeSeed: (file) => uploadFile('/employees/seed-upload', file),
+  useDemoRoster: () => request('/employees/use-demo', { method: 'POST' }),
+  getActiveRoster: () => request('/employees/active'),
   uploadAIAgents: (file) => uploadFile('/upload/ai-agents', file),
   uploadTasks: (file) => uploadFile('/upload/tasks', file),
   getLatestOutputs: () => request('/outputs/latest'),

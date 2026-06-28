@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import ProjectTaskBuilder from './ProjectTaskBuilder.jsx';
 import UploadBriefPanel from './UploadBriefPanel.jsx';
+import EmployeeSeedUpload from './EmployeeSeedUpload.jsx';
 import CurrentTeamSelector from './CurrentTeamSelector.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
 import ProjectComparisonTable from './ProjectComparisonTable.jsx';
@@ -138,7 +139,7 @@ function OptionCard({ option, isRecommended }) {
   );
 }
 
-export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
+export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmployeesChange }) {
   const [projectName, setProjectName] = useState('Sample Project');
   const [projectGoal, setProjectGoal] = useState(
     'Staff and deliver the MVP with the right mix of people and AI agents.'
@@ -160,6 +161,24 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
   const [error, setError] = useState(null);
   const [routingPreview, setRoutingPreview] = useState(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+
+  // Active employee digital twin seed roster: 'none' | 'demo' | 'uploaded'.
+  // Real simulation is gated until the user uploads a seed or chooses demo.
+  const [rosterStatus, setRosterStatus] = useState(null);
+  const rosterSource = (rosterStatus && rosterStatus.source) || 'none';
+
+  useEffect(() => {
+    api.getActiveRoster().then(setRosterStatus).catch(() => {});
+  }, []);
+
+  function handleRosterActivated(status) {
+    setRosterStatus(status);
+    if (onEmployeesChange) onEmployeesChange();
+    // Roster changed — clear any prior team selection (names may not exist).
+    setSelectedHumans(new Set());
+    setSelectedAis(new Set());
+    setResult(null);
+  }
 
   // Preload the current sample tasks as the default sample project.
   useEffect(() => {
@@ -230,9 +249,12 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
     <div className="card" style={{ borderTop: '4px solid var(--primary)' }}>
       <h2 style={{ fontSize: 20 }}>Project Mode</h2>
       <p className="section-hint" style={{ fontSize: 14 }}>
-        What project are you trying to staff? Describe the work and your current
-        team, then compare staffing options.
+        What project are you trying to staff? Start by loading your team
+        (upload a seed file or use the demo roster), describe the work, then
+        compare staffing options.
       </p>
+
+      <EmployeeSeedUpload status={rosterStatus} onActivated={handleRosterActivated} />
 
       {/* Project fields */}
       <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -335,12 +357,19 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks }) {
         onAisChange={setSelectedAis}
       />
 
+      {rosterSource === 'none' && (
+        <div className="msg msg-error" style={{ marginTop: 12 }}>
+          Upload employee data or choose demo roster.
+        </div>
+      )}
+
       <div className="card-actions">
         <button
           className="btn btn-primary"
           style={{ fontSize: 15, padding: '10px 18px' }}
           onClick={runProjectSimulation}
-          disabled={busy || tasks.length === 0}
+          disabled={busy || tasks.length === 0 || rosterSource === 'none'}
+          title={rosterSource === 'none' ? 'Upload employee data or choose demo roster first' : undefined}
         >
           {busy ? 'Comparing staffing options…' : 'Run Project Simulation'}
         </button>

@@ -29,6 +29,7 @@ from models import Team
 
 from . import brief_extract
 from . import brief_parser
+from . import employee_seed
 from .schemas import (
     AIAgent,
     Employee,
@@ -105,6 +106,53 @@ def _worker_to_employee(w) -> Employee:
         available_hours=w.available_hours, cost_rate=w.cost_rate,
         quality_score=w.quality_score, speed_multiplier=w.speed_multiplier,
     )
+
+
+# ---------------------------------------------------------------------------
+# Active employee "digital twin seed" set — IN-MEMORY, ephemeral, never written
+# to disk. Holds the uploaded seed roster (or an explicit demo choice) for the
+# current runtime. Resets on restart; no permanent persistence (by design).
+# ---------------------------------------------------------------------------
+_ACTIVE_ROSTER: dict = {
+    "source": "none",        # "none" | "demo" | "uploaded"
+    "workers": None,         # list[Worker] when uploaded, else None (-> demo CSV)
+    "filename": None,
+    "report": None,
+    "preview": None,
+}
+
+
+def _reset_active_roster() -> None:
+    """Reset to the un-chosen state (used by tests; not an endpoint)."""
+    _ACTIVE_ROSTER.update(
+        source="none", workers=None, filename=None, report=None, preview=None
+    )
+
+
+def _active_employees() -> List:
+    """The employees that drive simulation: the uploaded seed set if present,
+    otherwise the built-in demo roster CSV. (Demo is the fallback so direct API
+    use keeps working; the UI gates on an explicit choice.)"""
+    if _ACTIVE_ROSTER["workers"] is not None:
+        return list(_ACTIVE_ROSTER["workers"])
+    return data_loader.load_employees(EMPLOYEES_CSV)
+
+
+def _roster_status() -> dict:
+    """Compact status for the UI badge + gating."""
+    src = _ACTIVE_ROSTER["source"]
+    if src == "uploaded":
+        count = len(_ACTIVE_ROSTER["workers"] or [])
+    elif src == "demo":
+        count = len(data_loader.load_employees(EMPLOYEES_CSV))
+    else:
+        count = 0
+    return {
+        "source": src,
+        "filename": _ACTIVE_ROSTER["filename"],
+        "employee_count": count,
+        "report": _ACTIVE_ROSTER["report"],
+    }
 
 
 def _worker_to_ai_agent(w) -> AIAgent:
@@ -194,7 +242,57 @@ def update_config(config: ScoringConfig) -> ScoringConfig:
 
 @router.get("/employees", response_model=List[Employee], tags=["data"])
 def get_employees() -> List[Employee]:
-    return [_worker_to_employee(w) for w in data_loader.load_employees(EMPLOYEES_CSV)]
+    """Active employees: the uploaded digital-twin seed set, else the demo roster."""
+    return [_worker_to_employee(w) for w in _active_employees()]
+
+
+# ---------------------------------------------------------------------------
+# Employee Digital Twin Seed upload + gated roster choice
+# ---------------------------------------------------------------------------
+
+@router.post("/employees/seed-upload", tags=["data"])
+async def upload_employee_seed(file: UploadFile = File(...)) -> dict:
+    """Upload an Employee Digital Twin **Seed** file (.csv or .xlsx).
+
+    Seed profiles used for simulation - **not** full digital twins. The file is
+    parsed and validated in memory and becomes the active roster for this
+    session. Sensitive columns are dropped on ingest (never stored or returned).
+    Nothing is written to disk; the active set resets on restart.
+    """
+    content = await file.read()
+    try:
+        workers, report, preview = employee_seed.parse_seed(content, file.filename or "")
+    except employee_seed.SeedError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
+
+    _ACTIVE_ROSTER.update(
+        source="uploaded", workers=workers, filename=file.filename,
+        report=report, preview=preview,
+    )
+    return {
+        "message": f"Employee digital twin seed active — {len(workers)} employees.",
+        "status": _roster_status(),
+        "employees": preview,
+    }
+
+
+@router.post("/employees/use-demo", tags=["data"])
+def use_demo_roster() -> dict:
+    """Explicitly choose the built-in demo roster (clears any uploaded seed)."""
+    _reset_active_roster()
+    _ACTIVE_ROSTER["source"] = "demo"
+    demo = data_loader.load_employees(EMPLOYEES_CSV)
+    return {
+        "message": f"Demo roster active — {len(demo)} sample employees.",
+        "status": _roster_status(),
+        "employees": [_worker_to_employee(w).model_dump() for w in demo],
+    }
+
+
+@router.get("/employees/active", tags=["data"])
+def active_roster() -> dict:
+    """Current roster status for the UI badge + simulation gate."""
+    return _roster_status()
 
 
 @router.get("/ai-agents", response_model=List[AIAgent], tags=["data"])
@@ -384,7 +482,8 @@ def calibration_reject(request: CalibrationRejectRequest) -> dict:
 def simulate() -> List[dict]:
     """Run the full engine on the current CSV data + config; top 5 teams."""
     config = config_loader.load_config(CONFIG_PATH)
-    employees, ai_agents, tasks = data_loader.load_all(DATA_DIR)
+    _, ai_agents, tasks = data_loader.load_all(DATA_DIR)
+    employees = _active_employees()
     active = _active_calibration(config)
     results = optimizer.rank_teams(
         employees, ai_agents, tasks, config, top_n=5,
@@ -405,7 +504,8 @@ def simulate() -> List[dict]:
 def simulate_manual_team(request: ManualTeamRequest) -> dict:
     """Simulate one explicitly chosen team of humans and/or AI agents."""
     config = config_loader.load_config(CONFIG_PATH)
-    employees, ai_agents, tasks = data_loader.load_all(DATA_DIR)
+    _, ai_agents, tasks = data_loader.load_all(DATA_DIR)
+    employees = _active_employees()
 
     humans_by_name = {w.name: w for w in employees}
     ais_by_name = {w.name: w for w in ai_agents}
@@ -446,7 +546,7 @@ def simulate_project(request: ProjectScenarioRequest) -> dict:
     """
     config = config_loader.load_config(CONFIG_PATH)
     # Current employees + AI agents come from CSV; tasks come from the request.
-    employees = data_loader.load_employees(EMPLOYEES_CSV)
+    employees = _active_employees()
     ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
     task_dicts = [t.model_dump() for t in request.tasks]
     bindings = (
@@ -539,7 +639,7 @@ def simulate_uncertainty(request: UncertaintyRequest) -> dict:
     meeting the deadline/budget. Reproducible for a fixed ``seed``.
     """
     config = config_loader.load_config(CONFIG_PATH)
-    employees = data_loader.load_employees(EMPLOYEES_CSV)
+    employees = _active_employees()
     ai_agents = data_loader.load_ai_agents(AI_AGENTS_CSV)
     active = _active_calibration(config)
     try:
