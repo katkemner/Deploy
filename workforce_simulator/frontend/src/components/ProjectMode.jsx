@@ -47,6 +47,10 @@ const OPTION_DESCRIPTIONS = {
     'The valid team with the strongest cross-functional mix for exploring, prototyping, validating, and launching new ideas — while still covering the project’s required skills.',
 };
 
+// Stable empty set — AI agents are recommended by the simulation, never picked,
+// so the uncertainty panel runs the selected humans only.
+const EMPTY_SET = new Set();
+
 function Metric({ label, value }) {
   return (
     <div className="metric-row">
@@ -149,12 +153,10 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
   const [deadlineHours, setDeadlineHours] = useState('120');
   const [budget, setBudget] = useState('20000');
   const [maxTeamSize, setMaxTeamSize] = useState(5);
-  const [maxAi, setMaxAi] = useState(2);
   const [objective, setObjective] = useState('balanced');
 
   const [tasks, setTasks] = useState([]);
   const [selectedHumans, setSelectedHumans] = useState(new Set());
-  const [selectedAis, setSelectedAis] = useState(new Set());
 
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -176,7 +178,6 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
     if (onEmployeesChange) onEmployeesChange();
     // Roster changed — clear any prior team selection (names may not exist).
     setSelectedHumans(new Set());
-    setSelectedAis(new Set());
     setResult(null);
   }
 
@@ -209,11 +210,12 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
         optimization_objective: objective,
         team_constraints: {
           max_humans_per_team: Number(maxTeamSize),
-          max_ai_agents_per_team: Number(maxAi),
         },
         tasks,
         current_team_human_names: [...selectedHumans],
-        current_team_ai_agent_names: [...selectedAis],
+        // AI agents are recommended by the simulation — the user never picks
+        // them or says how many they have.
+        current_team_ai_agent_names: [],
       };
       const res = await api.runProjectSimulation(scenario);
       setResult(res);
@@ -225,9 +227,10 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
     }
   }
 
-  function fillBestTeam() {
-    setSelectedHumans(new Set(['Sarah', 'Maya', 'Priya', 'Alex', 'Casey']));
-    setSelectedAis(new Set(['AI Research Agent', 'AI QA Reviewer']));
+  // Select everyone in the active roster (humans only). AI is recommended by
+  // the simulation, never hand-picked. Roster-agnostic (works after upload).
+  function selectAllPeople() {
+    setSelectedHumans(new Set(employees.map((e) => e.name)));
   }
 
   async function previewRouting() {
@@ -331,15 +334,6 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
             onChange={(e) => setMaxTeamSize(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span>Max AI agents</span>
-          <input
-            type="number"
-            min="0"
-            value={maxAi}
-            onChange={(e) => setMaxAi(e.target.value)}
-          />
-        </label>
       </div>
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '8px 0 16px' }} />
@@ -347,20 +341,18 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
       <ProjectTaskBuilder tasks={tasks} onChange={setTasks} />
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-      <CurrentTeamSelector
-        employees={employees}
-        aiAgents={aiAgents}
-        tasks={tasks}
-        selectedHumans={selectedHumans}
-        selectedAis={selectedAis}
-        onHumansChange={setSelectedHumans}
-        onAisChange={setSelectedAis}
-      />
-
-      {rosterSource === 'none' && (
-        <div className="msg msg-error" style={{ marginTop: 12 }}>
-          Upload employee data or choose demo roster.
+      {rosterSource === 'none' ? (
+        <div className="msg msg-error">
+          Upload employee data or choose demo roster to pick your team. The
+          simulation recommends the AI agents — you don’t enter them.
         </div>
+      ) : (
+        <CurrentTeamSelector
+          employees={employees}
+          tasks={tasks}
+          selectedHumans={selectedHumans}
+          onHumansChange={setSelectedHumans}
+        />
       )}
 
       <div className="card-actions">
@@ -373,8 +365,13 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
         >
           {busy ? 'Comparing staffing options…' : 'Run Project Simulation'}
         </button>
-        <button className="btn" onClick={fillBestTeam} type="button">
-          Fill current best team
+        <button
+          className="btn"
+          onClick={selectAllPeople}
+          type="button"
+          disabled={rosterSource === 'none'}
+        >
+          Select all my people
         </button>
         <button
           className="btn"
@@ -401,7 +398,7 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
       <UncertaintyPanel
         selectedHumans={selectedHumans}
-        selectedAis={selectedAis}
+        selectedAis={EMPTY_SET}
         tasks={tasks}
         deadlineHours={deadlineHours}
         budget={budget}
