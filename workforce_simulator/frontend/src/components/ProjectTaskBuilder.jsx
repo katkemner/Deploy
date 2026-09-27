@@ -14,6 +14,9 @@ const BLANK = {
 export default function ProjectTaskBuilder({ tasks, onChange }) {
   const [draft, setDraft] = useState(BLANK);
   const [editIndex, setEditIndex] = useState(null);
+  // The form is hidden until the user adds or edits a task — the usual path
+  // is the AI-drafted list from the brief, with occasional touch-ups.
+  const [formOpen, setFormOpen] = useState(false);
 
   function commit() {
     if (!draft.task.trim() || !draft.required_skill.trim()) return;
@@ -32,11 +35,13 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
     onChange(next);
     setDraft(BLANK);
     setEditIndex(null);
+    setFormOpen(false);
   }
 
   function edit(i) {
     setDraft(tasks[i]);
     setEditIndex(i);
+    setFormOpen(true);
   }
 
   function remove(i) {
@@ -100,6 +105,24 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
         </table>
       </div>
 
+      {!formOpen && (
+        <div className="card-actions" style={{ marginTop: 4 }}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              setDraft(BLANK);
+              setEditIndex(null);
+              setFormOpen(true);
+            }}
+          >
+            ＋ Add a task
+          </button>
+        </div>
+      )}
+
+      {formOpen && (
+        <>
       <h3>{editIndex === null ? 'Add a task' : `Edit "${tasks[editIndex].task}"`}</h3>
       <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr' }}>
         <label className="field">
@@ -172,18 +195,19 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
         <button className="btn btn-primary" onClick={commit}>
           {editIndex === null ? 'Add task' : 'Save task'}
         </button>
-        {editIndex !== null && (
-          <button
-            className="btn"
-            onClick={() => {
-              setDraft(BLANK);
-              setEditIndex(null);
-            }}
-          >
-            Cancel
-          </button>
-        )}
+        <button
+          className="btn"
+          onClick={() => {
+            setDraft(BLANK);
+            setEditIndex(null);
+            setFormOpen(false);
+          }}
+        >
+          Cancel
+        </button>
       </div>
+        </>
+      )}
     </div>
   );
 }

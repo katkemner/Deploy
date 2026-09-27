@@ -3,13 +3,9 @@ import { api } from '../api/client.js';
 import ProjectTaskBuilder from './ProjectTaskBuilder.jsx';
 import UploadBriefPanel from './UploadBriefPanel.jsx';
 import EmployeeSeedUpload from './EmployeeSeedUpload.jsx';
-import CurrentTeamSelector from './CurrentTeamSelector.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
-import ProjectComparisonTable from './ProjectComparisonTable.jsx';
 import TaskScheduleTable from './TaskScheduleTable.jsx';
 import RoutingTable from './RoutingTable.jsx';
-import UncertaintyPanel from './UncertaintyPanel.jsx';
-import TradeoffView from './TradeoffView.jsx';
 
 // Objective dropdown: label shown to user -> key sent to the API.
 const OBJECTIVES = [
@@ -22,7 +18,7 @@ const OBJECTIVES = [
   ['Most innovative', 'most_innovative'],
 ];
 
-// The order option cards are displayed in.
+// The order options are listed in.
 const OPTION_ORDER = [
   'current_team',
   'ai_assisted_current_team',
@@ -32,11 +28,13 @@ const OPTION_ORDER = [
   'most_innovative_valid_team',
 ];
 
-// Plain-language description of what each staffing option represents.
+// Plain-language description of what each staffing option represents. The
+// whole active roster is the baseline "current team" — the simulation picks
+// the team and the AI agents; the user never hand-picks either.
 const OPTION_DESCRIPTIONS = {
-  current_team: 'Exactly the people + AI agents you selected — your baseline.',
+  current_team: 'Your whole roster, people only — the no-AI baseline.',
   ai_assisted_current_team:
-    'Your humans plus the AI agents the engine adds where they improve coverage, speed, cost, or risk.',
+    'Your whole roster plus the AI agents the engine adds where they improve coverage, speed, cost, or risk.',
   recommended_balanced_team:
     'The valid team with the best overall weighted score across all metrics.',
   fastest_valid_team:
@@ -47,123 +45,137 @@ const OPTION_DESCRIPTIONS = {
     'The valid team with the strongest cross-functional mix for exploring, prototyping, validating, and launching new ideas — while still covering the project’s required skills.',
 };
 
-function Metric({ label, value }) {
+function StepHeading({ n, title, hint }) {
   return (
-    <div className="metric-row">
-      <span className="label">{label}</span>
-      <span>{value}</span>
-    </div>
-  );
-}
-
-function OptionCard({ option, isRecommended }) {
-  const [showSchedule, setShowSchedule] = useState(false);
-  return (
-    <div className={`result-card ${isRecommended ? 'selected' : ''}`}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <strong>{option.option_label}</strong>
-        {option.is_valid_team ? (
-          <span className="badge badge-valid">valid</span>
-        ) : (
-          <span className="badge badge-invalid">invalid</span>
-        )}
-      </div>
-      {isRecommended && (
-        <div style={{ margin: '6px 0' }}>
-          <span className="badge badge-critical">recommended</span>
-        </div>
-      )}
-
-      {OPTION_DESCRIPTIONS[option.option] && (
-        <p className="section-hint" style={{ margin: '4px 0' }}>
-          {OPTION_DESCRIPTIONS[option.option]}
+    <>
+      <h3 style={{ fontSize: 17, marginBottom: 2 }}>
+        {n}. {title}
+      </h3>
+      {hint && (
+        <p className="section-hint" style={{ marginTop: 2 }}>
+          {hint}
         </p>
       )}
-
-      <div className="tag-group" style={{ margin: '8px 0' }}>
-        {option.team_members.map((m) => (
-          <span key={m} className="tag">
-            {m}
-          </span>
-        ))}
-        {option.ai_agents.map((m) => (
-          <span key={m} className="tag tag-ai">
-            {m}
-          </span>
-        ))}
-        {option.team_members.length === 0 && option.ai_agents.length === 0 && (
-          <span className="muted">empty team</span>
-        )}
-      </div>
-
-      <Metric label="Total score" value={option.total_score} />
-      <Metric label="Required coverage" value={`${option.required_skill_coverage_score}%`} />
-      <Metric label="Optional coverage" value={`${option.optional_skill_coverage_score}%`} />
-      <Metric label="Estimated cost" value={`$${option.estimated_cost}`} />
-      <Metric label="Estimated duration" value={`${option.estimated_duration}h`} />
-      <Metric label="Risk" value={option.risk_score} />
-      <Metric label="Confidence" value={option.confidence_score} />
-      {option.innovation_score !== undefined && (
-        <Metric label="Innovation" value={`${option.innovation_score}/100`} />
-      )}
-
-      {option.ai_agents_added && option.ai_agents_added.length > 0 && (
-        <div className="explanation" style={{ borderLeftColor: 'var(--green)' }}>
-          <strong>AI agents added:</strong> {option.ai_agents_added.join(', ')}
-          <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
-            {option.ai_assist_notes.map((n, i) => (
-              <li key={i}>{n}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {option.missing_required_skills.length > 0 && (
-        <div className="msg msg-error">
-          Missing required: {option.missing_required_skills.join(', ')}
-        </div>
-      )}
-
-      <div className="crit-path">
-        {option.critical_path.length ? option.critical_path.join('  →  ') : '—'}
-      </div>
-      <div className="explanation">{option.plain_english_explanation}</div>
-
-      <div className="card-actions">
-        <button className="btn" onClick={() => setShowSchedule((s) => !s)}>
-          {showSchedule ? 'Hide schedule' : 'View schedule'}
-        </button>
-      </div>
-      {showSchedule && <TaskScheduleTable schedule={option.task_schedule} />}
-    </div>
+    </>
   );
 }
 
-export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmployeesChange }) {
-  const [projectName, setProjectName] = useState('Sample Project');
-  const [projectGoal, setProjectGoal] = useState(
-    'Staff and deliver the MVP with the right mix of people and AI agents.'
+// One compact row per staffing option, expandable to full detail. Together the
+// rows are the comparison — no separate wide table.
+function OptionRow({ option, isRecommended, showInnovation, colCount }) {
+  const [open, setOpen] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  return (
+    <>
+      <tr
+        style={isRecommended ? { background: '#f0f7ff' } : undefined}
+        onClick={() => setOpen((o) => !o)}
+        role="button"
+      >
+        <td style={{ fontWeight: 600, whiteSpace: 'normal' }}>
+          {option.option_label}
+          {isRecommended && (
+            <>
+              {' '}
+              <span className="badge badge-critical">recommended</span>
+            </>
+          )}
+          {!option.is_valid_team && (
+            <>
+              {' '}
+              <span className="badge badge-invalid">invalid</span>
+            </>
+          )}
+        </td>
+        <td style={{ whiteSpace: 'normal' }}>
+          {option.team_members.join(', ') || '—'}
+          {option.ai_agents.length > 0 && (
+            <span className="muted"> + {option.ai_agents.join(', ')}</span>
+          )}
+        </td>
+        <td>${option.estimated_cost}</td>
+        <td>{option.estimated_duration}h</td>
+        <td>{option.required_skill_coverage_score}%</td>
+        <td>{option.risk_score}</td>
+        {showInnovation && <td>{option.innovation_score}</td>}
+        <td>
+          <button
+            className="btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen((o) => !o);
+            }}
+          >
+            {open ? 'Hide' : 'Details'}
+          </button>
+        </td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={colCount} style={{ whiteSpace: 'normal', background: '#fafafa' }}>
+            {OPTION_DESCRIPTIONS[option.option] && (
+              <p className="section-hint" style={{ marginTop: 0 }}>
+                {OPTION_DESCRIPTIONS[option.option]}
+              </p>
+            )}
+            {option.missing_required_skills.length > 0 && (
+              <div className="msg msg-error">
+                Missing required: {option.missing_required_skills.join(', ')}
+              </div>
+            )}
+            {option.ai_agents_added && option.ai_agents_added.length > 0 && (
+              <div className="explanation" style={{ borderLeftColor: 'var(--green)' }}>
+                <strong>AI agents added:</strong> {option.ai_agents_added.join(', ')}
+                <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                  {option.ai_assist_notes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="explanation">{option.plain_english_explanation}</div>
+            <div className="card-actions">
+              <button className="btn" onClick={() => setShowSchedule((s) => !s)}>
+                {showSchedule ? 'Hide schedule' : 'View schedule'}
+              </button>
+            </div>
+            {showSchedule && <TaskScheduleTable schedule={option.task_schedule} />}
+          </td>
+        </tr>
+      )}
+    </>
   );
-  // Pre-filled in the sample so the demo shows deadline/budget probabilities in
-  // the Monte Carlo panel and the recommendation. Clear either field to omit it.
+}
+
+export default function ProjectMode({ employees, sampleTasks, onEmployeesChange }) {
+  // The three inputs that change the answer.
+  const [objective, setObjective] = useState('balanced');
   const [deadlineHours, setDeadlineHours] = useState('120');
   const [budget, setBudget] = useState('20000');
+
+  // Advanced (defaults are fine for almost everyone).
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [projectName, setProjectName] = useState('My project');
+  const [projectGoal, setProjectGoal] = useState(
+    'Staff and deliver the project with the right mix of people and AI agents.'
+  );
   const [maxTeamSize, setMaxTeamSize] = useState(5);
-  const [maxAi, setMaxAi] = useState(2);
-  const [objective, setObjective] = useState('balanced');
 
   const [tasks, setTasks] = useState([]);
-  const [selectedHumans, setSelectedHumans] = useState(new Set());
-  const [selectedAis, setSelectedAis] = useState(new Set());
 
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [routingPreview, setRoutingPreview] = useState(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
+
+  // Auto-run Monte Carlo for the recommended team (one line in the results —
+  // no iterations/seed knobs; fixed 500 iterations, seed 42, reproducible).
+  const [mc, setMc] = useState(null);
+
+  const [showAlternatives, setShowAlternatives] = useState(false);
+  const [showRouting, setShowRouting] = useState(false);
 
   // Active employee digital twin seed roster: 'none' | 'demo' | 'uploaded'.
-  // Real simulation is gated until the user uploads a seed or chooses demo.
+  // Simulation is gated until the user uploads a seed or chooses demo.
   const [rosterStatus, setRosterStatus] = useState(null);
   const rosterSource = (rosterStatus && rosterStatus.source) || 'none';
 
@@ -174,10 +186,9 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
   function handleRosterActivated(status) {
     setRosterStatus(status);
     if (onEmployeesChange) onEmployeesChange();
-    // Roster changed — clear any prior team selection (names may not exist).
-    setSelectedHumans(new Set());
-    setSelectedAis(new Set());
+    // Roster changed — results computed against the old roster are stale.
     setResult(null);
+    setMc(null);
   }
 
   // Preload the current sample tasks as the default sample project.
@@ -200,6 +211,7 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
   async function runProjectSimulation() {
     setBusy(true);
     setError(null);
+    setMc(null);
     try {
       const scenario = {
         project_name: projectName,
@@ -209,14 +221,39 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
         optimization_objective: objective,
         team_constraints: {
           max_humans_per_team: Number(maxTeamSize),
-          max_ai_agents_per_team: Number(maxAi),
         },
         tasks,
-        current_team_human_names: [...selectedHumans],
-        current_team_ai_agent_names: [...selectedAis],
+        // The whole active roster is the baseline — the simulation picks the
+        // team. AI agents are recommended by the simulation; the user never
+        // enters them or says how many they have.
+        current_team_human_names: employees.map((e) => e.name),
+        current_team_ai_agent_names: [],
       };
       const res = await api.runProjectSimulation(scenario);
       setResult(res);
+      setShowAlternatives(false);
+      setShowRouting(false);
+
+      // Best-effort realism line for the recommended team; failures are
+      // silent (the deterministic result above stands on its own).
+      const rec = res.options[res.recommendation.recommended_option];
+      if (rec) {
+        try {
+          setMc(
+            await api.runUncertainty({
+              tasks,
+              human_names: rec.team_members,
+              ai_agent_names: rec.ai_agents,
+              iterations: 500,
+              seed: 42,
+              deadline_target_hours: deadlineHours ? Number(deadlineHours) : null,
+              budget_target: budget ? Number(budget) : null,
+            })
+          );
+        } catch {
+          setMc(null);
+        }
+      }
     } catch (err) {
       setError(err.message);
       setResult(null);
@@ -225,49 +262,57 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
     }
   }
 
-  function fillBestTeam() {
-    setSelectedHumans(new Set(['Sarah', 'Maya', 'Priya', 'Alex', 'Casey']));
-    setSelectedAis(new Set(['AI Research Agent', 'AI QA Reviewer']));
-  }
-
-  async function previewRouting() {
-    setPreviewBusy(true);
-    setError(null);
-    try {
-      const res = await api.routeTasks(tasks);
-      setRoutingPreview(res);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setPreviewBusy(false);
-    }
-  }
-
   const recommendedKey = result ? result.recommendation.recommended_option : null;
+  const showInnovation = objective === 'most_innovative';
+  const optionColCount = showInnovation ? 8 : 7;
+
+  // One-line routing summary; the full per-task matrix sits behind a toggle.
+  const routingLine = result
+    ? (() => {
+        const s = result.routing_summary || {};
+        const d = s.routing_distribution || {};
+        const aiOwned = (d.AI_ONLY || 0) + (d.AI_FIRST_HUMAN_REVIEW || 0);
+        const net = s.net_ai_time_saved;
+        const verdict =
+          net > 0
+            ? `AI saves a net ~${net}h after review and rework.`
+            : `AI does not save time here (net ${net}h after review and rework).`;
+        return `AI can lead ${aiOwned} of ${tasks.length} tasks. ${verdict}`;
+      })()
+    : null;
 
   return (
     <div className="card" style={{ borderTop: '4px solid var(--primary)' }}>
-      <h2 style={{ fontSize: 20 }}>Project Mode</h2>
+      <h2 style={{ fontSize: 20 }}>Staff your project</h2>
       <p className="section-hint" style={{ fontSize: 14 }}>
-        What project are you trying to staff? Start by loading your team
-        (upload a seed file or use the demo roster), describe the work, then
-        compare staffing options.
+        Three steps: load your people, describe the work, and get a staffing
+        recommendation. The simulation picks the team and adds AI agents where
+        they genuinely help — you don’t hand-pick either.
       </p>
 
+      {/* ---- Step 1: people ---- */}
       <EmployeeSeedUpload status={rosterStatus} onActivated={handleRosterActivated} />
 
-      {/* Project fields */}
-      <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr' }}>
+      {/* ---- Step 2: the work ---- */}
+      <StepHeading
+        n={2}
+        title="The work"
+        hint="Upload a project brief and let AI draft the task list, or edit tasks by hand. Every task stays editable."
+      />
+      <UploadBriefPanel onUseTasks={setTasks} />
+      <ProjectTaskBuilder tasks={tasks} onChange={setTasks} />
+
+      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+
+      {/* ---- Step 3: the answer ---- */}
+      <StepHeading
+        n={3}
+        title="Your answer"
+        hint="Pick what matters most, set your targets, and run."
+      />
+      <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
         <label className="field">
-          <span>Project name</span>
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Optimization objective</span>
+          <span>What matters most?</span>
           <select
             value={objective}
             onChange={(e) => setObjective(e.target.value)}
@@ -280,28 +325,6 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
             ))}
           </select>
         </label>
-      </div>
-
-      {objective === 'most_innovative' && (
-        <p className="section-hint" style={{ marginTop: 4 }}>
-          Most innovative still uses the project’s actual tasks, skills,
-          dependencies, effort, and constraints. It adds an innovation lens that
-          rewards cross-functional exploration, prototyping, validation, launch
-          capability, and innovation-skill coverage while penalizing overload,
-          missing skills, bottlenecks, and unhelpful AI review/rework.
-        </p>
-      )}
-
-      <label className="field">
-        <span>Project goal</span>
-        <input
-          type="text"
-          value={projectGoal}
-          onChange={(e) => setProjectGoal(e.target.value)}
-        />
-      </label>
-
-      <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
         <label className="field">
           <span>Deadline target (hours)</span>
           <input
@@ -322,44 +345,61 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
             onChange={(e) => setBudget(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span>Max team size</span>
-          <input
-            type="number"
-            min="1"
-            value={maxTeamSize}
-            onChange={(e) => setMaxTeamSize(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Max AI agents</span>
-          <input
-            type="number"
-            min="0"
-            value={maxAi}
-            onChange={(e) => setMaxAi(e.target.value)}
-          />
-        </label>
       </div>
 
-      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '8px 0 16px' }} />
-      <UploadBriefPanel onUseTasks={setTasks} />
-      <ProjectTaskBuilder tasks={tasks} onChange={setTasks} />
+      {showInnovation && (
+        <p className="section-hint" style={{ marginTop: 4 }}>
+          Most innovative still uses the project’s actual tasks, skills,
+          dependencies, effort, and constraints. It adds an innovation lens that
+          rewards cross-functional exploration, prototyping, validation, launch
+          capability, and innovation-skill coverage while penalizing overload,
+          missing skills, bottlenecks, and unhelpful AI review/rework.
+        </p>
+      )}
 
-      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-      <CurrentTeamSelector
-        employees={employees}
-        aiAgents={aiAgents}
-        tasks={tasks}
-        selectedHumans={selectedHumans}
-        selectedAis={selectedAis}
-        onHumansChange={setSelectedHumans}
-        onAisChange={setSelectedAis}
-      />
+      <p style={{ margin: '4px 0' }}>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => setShowAdvanced((s) => !s)}
+          style={{ border: 'none', background: 'none', padding: 0, color: 'var(--primary)', cursor: 'pointer' }}
+        >
+          {showAdvanced ? '▾ Hide advanced settings' : '▸ Advanced settings'}
+        </button>
+      </p>
+      {showAdvanced && (
+        <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+          <label className="field">
+            <span>Project name</span>
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Project goal</span>
+            <input
+              type="text"
+              value={projectGoal}
+              onChange={(e) => setProjectGoal(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Max team size</span>
+            <input
+              type="number"
+              min="1"
+              value={maxTeamSize}
+              onChange={(e) => setMaxTeamSize(e.target.value)}
+            />
+          </label>
+        </div>
+      )}
 
       {rosterSource === 'none' && (
-        <div className="msg msg-error" style={{ marginTop: 12 }}>
-          Upload employee data or choose demo roster.
+        <div className="msg msg-error">
+          Upload employee data or choose demo roster (step 1) before running.
         </div>
       )}
 
@@ -368,90 +408,89 @@ export default function ProjectMode({ employees, aiAgents, sampleTasks, onEmploy
           className="btn btn-primary"
           style={{ fontSize: 15, padding: '10px 18px' }}
           onClick={runProjectSimulation}
-          disabled={busy || tasks.length === 0 || rosterSource === 'none'}
+          disabled={busy || tasks.length === 0 || rosterSource === 'none' || employees.length === 0}
           title={rosterSource === 'none' ? 'Upload employee data or choose demo roster first' : undefined}
         >
           {busy ? 'Comparing staffing options…' : 'Run Project Simulation'}
-        </button>
-        <button className="btn" onClick={fillBestTeam} type="button">
-          Fill current best team
-        </button>
-        <button
-          className="btn"
-          onClick={previewRouting}
-          type="button"
-          disabled={previewBusy || tasks.length === 0}
-        >
-          {previewBusy ? 'Routing…' : 'Preview task routing'}
         </button>
       </div>
 
       {error && <div className="msg msg-error">{error}</div>}
 
-      {routingPreview && !result && (
-        <div style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 16 }}>Task Routing (preview)</h3>
-          <RoutingTable
-            routing={routingPreview.task_routing}
-            summary={routingPreview.routing_summary}
-          />
-        </div>
-      )}
-
-      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-      <UncertaintyPanel
-        selectedHumans={selectedHumans}
-        selectedAis={selectedAis}
-        tasks={tasks}
-        deadlineHours={deadlineHours}
-        budget={budget}
-      />
-
+      {/* ---- Results: one recommendation, alternatives on demand ---- */}
       {result && (
         <div style={{ marginTop: 18 }}>
-          <RecommendationSummary recommendation={result.recommendation} />
+          <RecommendationSummary
+            recommendation={result.recommendation}
+            option={result.options[recommendedKey]}
+            mc={mc}
+            showInnovation={showInnovation}
+          />
 
-          <h3 style={{ fontSize: 16 }}>Compare Staffing Options</h3>
-          <p className="section-hint">
-            The same five options side by side. <strong>Review h</strong> =
-            estimated human hours to review AI output; <strong>Rework h</strong>{' '}
-            = expected hours fixing AI mistakes; <strong>Net AI h</strong> = AI
-            time saved minus that review + rework. A <em>reviewer bottleneck</em>{' '}
-            means the AI review load exceeds the team's human review capacity.
+          <p style={{ margin: '10px 0 4px' }}>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => setShowAlternatives((s) => !s)}
+            >
+              {showAlternatives
+                ? 'Hide other options'
+                : `Compare all ${OPTION_ORDER.length} staffing options`}
+            </button>{' '}
+            <button className="btn" type="button" onClick={() => setShowRouting((s) => !s)}>
+              {showRouting ? 'Hide task-by-task AI detail' : 'Task-by-task AI detail'}
+            </button>
           </p>
-          <ProjectComparisonTable rows={result.comparison_table} />
 
-          <h3 style={{ fontSize: 16, marginTop: 18 }}>Decision options</h3>
-          <div className="result-grid">
-            {OPTION_ORDER.map((key) => (
-              <OptionCard
-                key={key}
-                option={result.options[key]}
-                isRecommended={key === recommendedKey}
+          {showAlternatives && (
+            <div className="table-scroll" style={{ marginTop: 8 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Option</th>
+                    <th>Team</th>
+                    <th>Cost</th>
+                    <th>Duration</th>
+                    <th>Coverage</th>
+                    <th>Risk</th>
+                    {showInnovation && <th>Innovation</th>}
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {OPTION_ORDER.map((key) => (
+                    <OptionRow
+                      key={key}
+                      option={result.options[key]}
+                      isRecommended={key === recommendedKey}
+                      showInnovation={showInnovation}
+                      colCount={optionColCount}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {showRouting ? (
+            <div style={{ marginTop: 8 }}>
+              <p className="section-hint">
+                For each task, a recommended split between humans and AI — from
+                AI_ONLY through HUMAN_ONLY — plus the review and rework hours
+                that split implies.
+              </p>
+              <RoutingTable
+                routing={result.task_routing}
+                summary={result.routing_summary}
               />
-            ))}
-          </div>
-
-          <TradeoffView
-            paretoFront={result.pareto_front}
-            paretoExplanation={result.pareto_explanation}
-            recommendedKey={recommendedKey}
-          />
-
-          <h3 style={{ fontSize: 16, marginTop: 18 }}>
-            Task Routing (human vs AI)
-          </h3>
-          <p className="section-hint">
-            For each task, a recommended split between humans and AI — from
-            AI_ONLY through HUMAN_ONLY — plus the review and rework hours that
-            split implies. Open <strong>Why?</strong> on any row to see where each
-            1–5 suitability score came from (manual input, public prior,
-            WORKBank, heuristic, or fallback).
-          </p>
-          <RoutingTable
-            routing={result.task_routing}
-            summary={result.routing_summary}
-          />
+            </div>
+          ) : (
+            routingLine && (
+              <p className="muted" style={{ marginTop: 6 }}>
+                {routingLine}
+              </p>
+            )
+          )}
         </div>
       )}
     </div>
