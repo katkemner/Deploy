@@ -99,11 +99,12 @@ export default function EmployeeSeedUpload({ status, onActivated }) {
       {error && <div className="msg msg-error">{error}</div>}
 
       <p className="section-hint" style={{ marginTop: 6 }}>
-        Required columns: <code>name, role/job_title, department/team, skills,
-        capacity_hours, workload_hours</code> (employee_id generated if absent).
-        Recommended: cost_rate, quality_score, manager, job_level,
-        innovation_capability_tags, and more (captured for context; they don’t
-        affect scoring).
+        Only two columns are required: a <strong>name</strong> column (e.g.{' '}
+        <code>name</code> or <code>Employee</code>) and a <strong>skills</strong>{' '}
+        column. Common column names are recognized automatically (e.g.{' '}
+        <code>Hourly Rate</code> → cost). Anything missing — role, hours
+        available, current workload, cost, quality — is defaulted or generated,
+        and the validation report tells you exactly what was assumed.
       </p>
       <p className="section-hint">
         Note: this seed controls the active employee set used for team selection
@@ -159,8 +160,14 @@ export default function EmployeeSeedUpload({ status, onActivated }) {
                   <td>{p.role}</td>
                   <td>{p.department || '—'}</td>
                   <td style={{ whiteSpace: 'normal' }}>{(p.skills || []).join(', ')}</td>
-                  <td>{p.capacity_hours}</td>
-                  <td>{p.workload_hours}</td>
+                  <td>
+                    {p.capacity_hours}
+                    {p.capacity_hours_defaulted && <span className="muted" title="defaulted"> *</span>}
+                  </td>
+                  <td>
+                    {p.workload_hours}
+                    {p.workload_hours_defaulted && <span className="muted" title="defaulted"> *</span>}
+                  </td>
                   <td>
                     {p.cost_rate}
                     {p.cost_rate_defaulted && <span className="muted" title="defaulted"> *</span>}

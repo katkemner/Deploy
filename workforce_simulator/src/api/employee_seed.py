@@ -27,17 +27,31 @@ from models import HUMAN, Worker
 # Defaults for engine-needed fields that the spec treats as "recommended".
 DEFAULT_COST_RATE = 75.0
 DEFAULT_QUALITY_SCORE = 7.0
+# Real HR exports rarely carry capacity/workload columns, so a missing column
+# is defaulted (and loudly reported) rather than rejected.
+DEFAULT_CAPACITY_HOURS = 40.0
+DEFAULT_WORKLOAD_HOURS = 0.0
 
-# Column aliases -> canonical field. Matching is case/space/underscore-insensitive.
+# Column aliases -> canonical field. Matching is case/space/underscore-insensitive,
+# so e.g. a header of "Employee" or "Hourly Rate" maps without any renaming.
 _ALIASES = {
-    "name": ["name", "employee_name", "full_name"],
-    "employee_id": ["employee_id", "emp_id", "employeeid", "id"],
-    "role": ["role", "job_title", "title", "position"],
-    "department": ["department", "team", "dept", "division"],
-    "skills": ["skills", "skill", "skillset", "skill_set"],
-    "capacity_hours": ["capacity_hours", "capacity", "weekly_capacity_hours", "capacity_hrs"],
-    "workload_hours": ["workload_hours", "workload", "current_workload_hours", "workload_hrs"],
-    "cost_rate": ["cost_rate", "cost", "hourly_rate", "rate", "bill_rate"],
+    "name": ["name", "employee_name", "full_name", "employee", "person",
+             "staff", "staff_member", "team_member", "worker"],
+    "employee_id": ["employee_id", "emp_id", "employeeid", "id", "staff_id",
+                    "person_id"],
+    "role": ["role", "job_title", "title", "position", "job", "job_role"],
+    "department": ["department", "team", "dept", "division", "group",
+                   "business_unit", "org", "function"],
+    "skills": ["skills", "skill", "skillset", "skill_set", "competencies",
+               "capabilities", "expertise", "skill_tags"],
+    "capacity_hours": ["capacity_hours", "capacity", "weekly_capacity_hours",
+                       "capacity_hrs", "available_hours", "hours_available",
+                       "weekly_hours", "hours_per_week", "availability_hours"],
+    "workload_hours": ["workload_hours", "workload", "current_workload_hours",
+                       "workload_hrs", "current_workload", "allocated_hours",
+                       "hours_allocated", "booked_hours", "utilization_hours"],
+    "cost_rate": ["cost_rate", "cost", "hourly_rate", "rate", "bill_rate",
+                  "hourly_cost", "cost_per_hour"],
     "quality_score": ["quality_score", "quality"],
 }
 
@@ -50,14 +64,16 @@ RECOMMENDED_FIELDS = [
     "communication_preference", "learning_goals", "innovation_capability_tags",
 ]
 
-# Required seed columns (per spec). Of these, the four ENGINE-ESSENTIAL ones must
-# be present or the file is rejected; the rest are reported-but-tolerated
-# (role defaults, department optional, employee_id generated).
+# Required seed columns (per spec). Of these, only the two ENGINE-ESSENTIAL
+# ones must be present or the file is rejected — the engine cannot invent a
+# person's name or skills. Everything else is defaulted/generated and loudly
+# reported: role defaults, department optional, employee_id generated, and
+# capacity/workload default to 40h available / 0h committed when absent.
 REQUIRED_FIELDS = [
     "employee_id", "name", "role", "department",
     "skills", "capacity_hours", "workload_hours",
 ]
-ENGINE_ESSENTIAL = ["name", "skills", "capacity_hours", "workload_hours"]
+ENGINE_ESSENTIAL = ["name", "skills"]
 
 # Sensitive column tokens — any column whose name contains one of these (as a
 # whole token) is dropped on ingest. Privacy-first: the engine never needs them.
@@ -174,14 +190,16 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
 
     idx = _build_alias_index(df.columns)
 
-    # 2. Engine-essential columns must be present.
+    # 2. Engine-essential columns must be present (only name + skills — the
+    # engine can default everything else, but it cannot invent people).
     missing_essential = [f for f in ENGINE_ESSENTIAL if f not in idx]
     if missing_essential:
         raise SeedError(
             400,
             "Seed file is missing essential column(s): "
-            f"{missing_essential}. Required: {REQUIRED_FIELDS} "
-            "(employee_id, role, department are recommended-but-tolerated).",
+            f"{missing_essential}. A name column (e.g. 'name' or 'Employee') "
+            "and a skills column are required; everything else is defaulted "
+            "or generated with a note in the validation report.",
         )
 
     # Track which seed-required columns are absent (informational).
@@ -199,26 +217,35 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
     quality_defaulted = 0
     role_defaulted = 0
     id_generated = 0
+    capacity_defaulted = 0
+    workload_defaulted = 0
 
     for i, row in df.iterrows():
         rownum = int(i) + 2  # +2 = header row + 1-based
         name = _cell(row, idx.get("name"))
         skills = _split_list(_cell(row, idx.get("skills")))
-        capacity = _num(_cell(row, idx.get("capacity_hours")))
-        workload = _num(_cell(row, idx.get("workload_hours")))
 
         problems = []
         if not name or not str(name).strip():
             problems.append("missing name")
         if not skills:
             problems.append("missing skills")
-        if capacity is None:
-            problems.append("missing/invalid capacity_hours")
-        if workload is None:
-            problems.append("missing/invalid workload_hours")
         if problems:
             row_errors.append(f"Row {rownum}: " + ", ".join(problems) + " (skipped)")
             continue
+
+        # capacity/workload: default + flag (missing column or blank cell) —
+        # never silently, always counted in the validation report.
+        capacity = _num(_cell(row, idx.get("capacity_hours")))
+        capacity_is_default = capacity is None
+        if capacity_is_default:
+            capacity = DEFAULT_CAPACITY_HOURS
+            capacity_defaulted += 1
+        workload = _num(_cell(row, idx.get("workload_hours")))
+        workload_is_default = workload is None
+        if workload_is_default:
+            workload = DEFAULT_WORKLOAD_HOURS
+            workload_defaulted += 1
 
         # role: default if absent.
         role = _cell(row, idx.get("role"))
@@ -265,7 +292,9 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
                            if _cell(row, idx.get("department")) is not None else None),
             "skills": skills,
             "capacity_hours": float(capacity),
+            "capacity_hours_defaulted": capacity_is_default,
             "workload_hours": float(workload),
+            "workload_hours_defaulted": workload_is_default,
             "cost_rate": float(cost),
             "cost_rate_defaulted": cost_is_default,
             "quality_score": float(quality),
@@ -282,6 +311,16 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
 
     distinct_skills = sorted({s for w in workers for s in w.skills})
     defaulted_fields = []
+    if capacity_defaulted:
+        defaulted_fields.append(
+            f"capacity_hours (no value found — assumed {DEFAULT_CAPACITY_HOURS:g}h "
+            f"available for {capacity_defaulted} employee(s); edit your file if that's wrong)"
+        )
+    if workload_defaulted:
+        defaulted_fields.append(
+            f"workload_hours (no value found — assumed {DEFAULT_WORKLOAD_HOURS:g}h "
+            f"already committed for {workload_defaulted} employee(s))"
+        )
     if cost_defaulted:
         defaulted_fields.append(f"cost_rate (defaulted to {DEFAULT_COST_RATE:g} for {cost_defaulted} employee(s))")
     if quality_defaulted:

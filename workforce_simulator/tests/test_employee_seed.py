@@ -109,15 +109,63 @@ def test_employee_id_generated_when_absent():
     assert any("employee_id" in d for d in report["defaulted_fields"])
 
 
-def test_row_with_missing_value_is_skipped_and_reported():
+def test_row_with_missing_name_or_skills_is_skipped_and_reported():
     csv = (
         "name,job_title,department,skills,capacity_hours,workload_hours\n"
         "Good,Eng,Plat,Python,40,10\n"
-        "Bad,Eng,Plat,Python,,10\n"  # missing capacity
+        ",Eng,Plat,Python,40,10\n"       # missing name
+        "NoSkills,Eng,Plat,,40,10\n"     # missing skills
     )
     workers, report, _ = employee_seed.parse_seed(_csv(csv), "team.csv")
     assert [w.name for w in workers] == ["Good"]
-    assert report["row_errors"] and "capacity" in report["row_errors"][0]
+    assert len(report["row_errors"]) == 2
+    assert "name" in report["row_errors"][0]
+    assert "skills" in report["row_errors"][1]
+
+
+def test_blank_capacity_cell_defaults_instead_of_skipping():
+    csv = (
+        "name,job_title,department,skills,capacity_hours,workload_hours\n"
+        "Good,Eng,Plat,Python,40,10\n"
+        "Blank,Eng,Plat,Python,,10\n"  # blank capacity -> default, keep the row
+    )
+    workers, report, preview = employee_seed.parse_seed(_csv(csv), "team.csv")
+    assert [w.name for w in workers] == ["Good", "Blank"]
+    assert workers[1].capacity_hours == employee_seed.DEFAULT_CAPACITY_HOURS
+    assert preview[1]["capacity_hours_defaulted"] is True
+    assert preview[0]["capacity_hours_defaulted"] is False
+    assert any("capacity_hours" in d for d in report["defaulted_fields"])
+    assert report["row_errors"] == []
+
+
+def test_missing_capacity_and_workload_columns_default_with_report():
+    # A typical HR export: names, roles, skills, rates — no capacity/workload.
+    csv = (
+        "Employee,Role,Skills,Hourly Rate\n"
+        "Maya Chen,PM,Program management|Agile,72\n"
+        "Jordan Ellis,Analyst,SQL|Power BI,48\n"
+    )
+    workers, report, preview = employee_seed.parse_seed(_csv(csv), "roster.csv")
+    assert [w.name for w in workers] == ["Maya Chen", "Jordan Ellis"]
+    # "Employee" -> name, "Hourly Rate" -> cost_rate (no renaming needed).
+    assert workers[0].cost_rate == 72.0
+    # Missing columns default loudly, never silently.
+    assert workers[0].capacity_hours == employee_seed.DEFAULT_CAPACITY_HOURS
+    assert workers[0].workload_hours == employee_seed.DEFAULT_WORKLOAD_HOURS
+    assert any("capacity_hours" in d for d in report["defaulted_fields"])
+    assert any("workload_hours" in d for d in report["defaulted_fields"])
+    assert preview[0]["capacity_hours_defaulted"] is True
+    assert preview[0]["workload_hours_defaulted"] is True
+
+
+def test_missing_name_column_still_rejected():
+    csv = "job_title,skills,capacity_hours\nEng,Python,40\n"
+    try:
+        employee_seed.parse_seed(_csv(csv), "team.csv")
+        assert False, "expected SeedError"
+    except employee_seed.SeedError as exc:
+        assert exc.status == 400
+        assert "name" in exc.message
 
 
 def test_excel_xlsx_parsing():

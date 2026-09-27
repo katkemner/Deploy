@@ -191,22 +191,22 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     setMc(null);
   }
 
-  // Preload the current sample tasks as the default sample project.
-  useEffect(() => {
-    if (sampleTasks && sampleTasks.length && tasks.length === 0) {
-      setTasks(
-        sampleTasks.map((t) => ({
-          task: t.task,
-          required_skill: t.required_skill,
-          effort_hours: t.effort_hours,
-          priority: t.priority,
-          dependencies: t.dependencies || [],
-          is_required: t.is_required,
-        }))
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sampleTasks]);
+  // The task list starts EMPTY — a real project's tasks come from the brief
+  // upload or manual entry. The sample project is opt-in for exploring.
+  function loadSampleTasks() {
+    setTasks(
+      (sampleTasks || []).map((t) => ({
+        task: t.task,
+        required_skill: t.required_skill,
+        effort_hours: t.effort_hours,
+        priority: t.priority,
+        dependencies: t.dependencies || [],
+        is_required: t.is_required,
+      }))
+    );
+    setResult(null);
+    setMc(null);
+  }
 
   async function runProjectSimulation() {
     setBusy(true);
@@ -300,6 +300,20 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         hint="Upload a project brief and let AI draft the task list, or edit tasks by hand. Every task stays editable."
       />
       <UploadBriefPanel onUseTasks={setTasks} />
+      {tasks.length === 0 && (
+        <p className="section-hint">
+          No tasks yet — upload a brief above, add tasks below, or{' '}
+          <button
+            type="button"
+            onClick={loadSampleTasks}
+            disabled={!sampleTasks || sampleTasks.length === 0}
+            style={{ border: 'none', background: 'none', padding: 0, color: 'var(--primary)', cursor: 'pointer', textDecoration: 'underline', font: 'inherit' }}
+          >
+            load the sample project
+          </button>{' '}
+          just to explore.
+        </p>
+      )}
       <ProjectTaskBuilder tasks={tasks} onChange={setTasks} />
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
