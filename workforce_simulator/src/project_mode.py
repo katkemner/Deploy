@@ -417,17 +417,37 @@ def build_recommendation(
     ai_time_verdict = _ai_time_verdict(burden)
     reviewer_note = burden["reviewer_bottleneck"]["message"]
 
+    rec_is_valid = _is_valid(rec)
+
     # For the Most-Innovative objective, lead with the score and tie-breaker.
     innovation_clause = ""
     if objective == "most_innovative":
+        pool_word = "valid" if rec_is_valid else "available"
         innovation_clause = (
-            f"Innovation score {rec.innovation_score:.0f}/100 (highest among valid "
-            "options; ties broken by lower risk, then shorter duration, then "
-            "lower cost). "
+            f"Innovation score {rec.innovation_score:.0f}/100 (highest among "
+            f"{pool_word} options; ties broken by lower risk, then shorter "
+            "duration, then lower cost). "
+        )
+
+    # Honest lead: never claim a win "among valid options" when nothing valid
+    # exists — say plainly that no team fully covers the required skills.
+    if rec_is_valid:
+        opening = f"Recommended: {label}. It wins on {why_phrase}, covering "
+        why_text = f"It has the {why_phrase} among the valid options for this objective."
+    else:
+        opening = (
+            f"No team fully covers this project's required skills. "
+            f"Closest fit: {label}, covering "
+        )
+        why_text = (
+            "No option fully covers the required skills; this is the closest "
+            f"fit ({rec.required_skill_coverage_score:.0f}% required coverage). "
+            "Fix the skill gaps or edit the tasks' required skills to match "
+            "your roster."
         )
 
     summary_text = (
-        f"Recommended: {label}. It wins on {why_phrase}, covering "
+        f"{opening}"
         f"{rec.required_skill_coverage_score:.0f}% of required skills "
         f"({rec.optional_skill_coverage_score:.0f}% optional), {', '.join(tradeoff_bits)}. "
         f"{innovation_clause}"
@@ -441,7 +461,7 @@ def build_recommendation(
     return {
         "recommended_option": rec_key,
         "recommended_label": label,
-        "why": f"It has the {why_phrase} among the valid options for this objective.",
+        "why": why_text,
         "main_bottleneck": bottleneck_text,
         "critical_path": rec.critical_path,
         "biggest_risk": biggest_risk,
@@ -645,9 +665,37 @@ def run_project_simulation(
             ),
         )[0]
     else:
-        # No fully-staffed team possible; fall back to the current team so the
-        # response is still well-formed (clearly marked invalid downstream).
-        balanced = fastest = cheapest = most_innovative = current_res
+        # No fully-staffed team possible. Fall back to the closest optimizer
+        # candidates — these respect the team-size constraints, unlike the
+        # whole current roster — preferring the best required-skill coverage,
+        # and clearly marked invalid downstream.
+        pool = all_results or [current_res]
+        best_cov = max(r.required_skill_coverage_score for r in pool)
+        top = [r for r in pool if r.required_skill_coverage_score == best_cov]
+        balanced = sorted(
+            top,
+            key=lambda r: (-r.total_score, r.risk_score, r.estimated_cost, r.team.signature()),
+        )[0]
+        fastest = sorted(
+            top,
+            key=lambda r: (r.estimated_duration, -r.total_score, r.estimated_cost, r.team.signature()),
+        )[0]
+        cheapest = sorted(
+            top,
+            key=lambda r: (r.estimated_cost, -r.total_score, r.estimated_duration, r.team.signature()),
+        )[0]
+        for r in top:
+            b = _burden(r, routing_records)
+            r.innovation_score, r.innovation_components = innovation.score(
+                r, routing_by_task, b
+            )
+        most_innovative = sorted(
+            top,
+            key=lambda r: (
+                -r.innovation_score, r.risk_score,
+                r.estimated_duration, r.estimated_cost, r.team.signature(),
+            ),
+        )[0]
 
     options: Dict[str, SimulationResult] = {
         "current_team": current_res,

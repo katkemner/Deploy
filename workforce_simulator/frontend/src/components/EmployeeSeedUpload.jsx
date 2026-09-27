@@ -107,10 +107,10 @@ export default function EmployeeSeedUpload({ status, onActivated }) {
         and the validation report tells you exactly what was assumed.
       </p>
       <p className="section-hint">
-        Note: this seed controls the active employee set used for team selection
-        and simulation. The brief-to-task AI draft still uses the existing demo
-        skill vocabulary, so generated task skills may need a quick edit to align
-        with your uploaded employee seed.
+        Note: this seed controls the active employee set used for team
+        selection, simulation, <strong>and the brief-to-task AI draft</strong> —
+        drafted tasks use your roster’s own skill names, so coverage matches
+        your people out of the box.
       </p>
 
       {/* Validation report */}

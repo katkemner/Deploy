@@ -19,6 +19,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Dict, Tuple
 
+import skill_matching
+
 # The ten innovation capability tags (team skill-coverage signals).
 INNOVATION_TAGS = (
     "innovation",
@@ -87,10 +89,21 @@ def _human_skills(result) -> set:
     return skills
 
 
+def _profile_for(skill: str) -> dict:
+    """Profile for a skill name, bridging roster vocabulary deterministically.
+
+    Exact keys behave exactly as before; otherwise a token/stem match maps
+    free-form roster skills ("Copywriting" -> "writing", "UX research" -> "ux")
+    so uploaded rosters still earn capability/function/phase credit.
+    """
+    key, _ = skill_matching.match(skill, SKILL_PROFILE.keys())
+    return SKILL_PROFILE.get(key, _DEFAULT) if key else _DEFAULT
+
+
 def _team_capabilities(human_skills: set) -> Tuple[set, set, set]:
     caps, funcs, phases = set(), set(), set()
     for sk in human_skills:
-        prof = SKILL_PROFILE.get(sk, _DEFAULT)
+        prof = _profile_for(sk)
         caps |= set(prof["tags"])
         funcs.add(prof["function"])
         phases |= set(prof["phases"])
@@ -188,7 +201,7 @@ def score(result, routing_by_task: dict, burden: dict) -> Tuple[float, Dict[str,
     tasks_by_phase = defaultdict(list)
     project_functions = set()
     for a in result.assignments:
-        prof = SKILL_PROFILE.get(a.required_skill.strip().lower(), _DEFAULT)
+        prof = _profile_for(a.required_skill.strip().lower())
         project_functions.add(prof["function"])
         for ph in prof["phases"]:
             tasks_by_phase[ph].append(a)
