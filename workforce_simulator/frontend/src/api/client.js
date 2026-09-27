@@ -98,43 +98,20 @@ function uploadFile(path, file) {
   return request(path, { method: 'POST', body: form });
 }
 
+// Only the endpoints the simplified UI uses. The backend still exposes the
+// full API (config, manual team, calibration, priors, routing preview, …) for
+// direct/API use — the UI just no longer surfaces those panels.
 export const api = {
   getHealth: () => request('/health'),
-  getConfig: () => request('/config'),
-  saveConfig: (config) => jsonPost('/config', config),
   getEmployees: () => request('/employees'),
-  getAIAgents: () => request('/ai-agents'),
   getTasks: () => request('/tasks'),
-  getPriors: () => request('/priors'),
-  getWorkbankPriors: () => request('/priors/workbank'),
-  matchTasks: (tasks) => jsonPost('/priors/match-tasks', { tasks }),
-  matchWorkbankTasks: (tasks) => jsonPost('/priors/workbank/match-tasks', { tasks }),
-  runSimulation: () => request('/simulate', { method: 'POST' }),
-  runManualTeam: (humanNames, aiAgentNames) =>
-    jsonPost('/simulate/manual-team', {
-      human_names: humanNames,
-      ai_agent_names: aiAgentNames,
-    }),
   runProjectSimulation: (scenario) => jsonPost('/simulate/project', scenario),
-  routeTasks: (tasks) => jsonPost('/route/tasks', { tasks }),
   runUncertainty: (payload) => jsonPost('/simulate/uncertainty', payload),
-  submitActuals: (actual) => jsonPost('/calibration/actuals', actual),
-  getCalibrationSummary: () => request('/calibration/summary'),
-  getCalibrationProposals: () => request('/calibration/proposals'),
-  getCalibrationActive: () => request('/calibration/active'),
-  applyCalibration: (proposalIds, applyNotes) =>
-    jsonPost('/calibration/apply', { proposal_ids: proposalIds, apply_notes: applyNotes }),
-  rejectCalibration: (proposalIds) =>
-    jsonPost('/calibration/reject', { proposal_ids: proposalIds }),
-  uploadEmployees: (file) => uploadFile('/upload/employees', file),
   // Employee Digital Twin Seed: upload a seed file (.csv/.xlsx) as the active
   // in-memory roster, or explicitly choose the demo roster.
   uploadEmployeeSeed: (file) => uploadFile('/employees/seed-upload', file),
   useDemoRoster: () => request('/employees/use-demo', { method: 'POST' }),
   getActiveRoster: () => request('/employees/active'),
-  uploadAIAgents: (file) => uploadFile('/upload/ai-agents', file),
-  uploadTasks: (file) => uploadFile('/upload/tasks', file),
-  getLatestOutputs: () => request('/outputs/latest'),
   // Brief upload: deterministic text extraction, then (after the user
   // confirms) AI drafting of editable tasks. Two separate calls by design.
   extractBriefText: (file) => uploadFile('/projects/extract-brief-text', file),
