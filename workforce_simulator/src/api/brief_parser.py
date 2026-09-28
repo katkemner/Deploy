@@ -113,6 +113,15 @@ class DraftTask(BaseModel):
             "artifact and the conditions it must satisfy)."
         ),
     )
+    irreversible: bool = Field(
+        default=False,
+        description=(
+            "True only when the outcome is hard to undo once shipped: it goes "
+            "to external audiences, spends money, or makes commitments (e.g. "
+            "publishing, sending, launching, signing). Internal drafts and "
+            "analysis are reversible."
+        ),
+    )
     needs_user_review: bool = Field(
         default=False,
         description="True if the task is uncertain or the required skill isn't "

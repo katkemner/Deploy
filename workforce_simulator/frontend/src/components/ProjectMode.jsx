@@ -4,6 +4,7 @@ import ProjectTaskBuilder from './ProjectTaskBuilder.jsx';
 import UploadBriefPanel from './UploadBriefPanel.jsx';
 import EmployeeSeedUpload from './EmployeeSeedUpload.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
+import CheckpointPlan from './CheckpointPlan.jsx';
 import TaskScheduleTable from './TaskScheduleTable.jsx';
 import RoutingTable from './RoutingTable.jsx';
 
@@ -440,6 +441,8 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
             mc={mc}
             showInnovation={showInnovation}
           />
+
+          <CheckpointPlan plan={result.checkpoint_plan} />
 
           <p style={{ margin: '10px 0 4px' }}>
             <button
