@@ -32,7 +32,7 @@ function toTaskInput(d) {
   };
 }
 
-export default function UploadBriefPanel({ onUseTasks }) {
+export default function UploadBriefPanel({ onUseTasks, rosterReady = true }) {
   const [stage, setStage] = useState(STAGE.IDLE);
   const [file, setFile] = useState(null);
   const [extracted, setExtracted] = useState(null); // { text, char_count, ... }
@@ -164,11 +164,18 @@ export default function UploadBriefPanel({ onUseTasks }) {
             sends the text above to Anthropic to draft tasks.{' '}
             <strong>Do not upload sensitive company data yet.</strong>
           </div>
+          {!rosterReady && (
+            <div className="msg msg-error">
+              Choose your roster in step 1 first — the AI drafts tasks using
+              your roster’s skills, so it needs to know who your people are.
+            </div>
+          )}
           <div className="card-actions" style={{ marginTop: 8 }}>
             <button
               className="btn btn-primary"
               onClick={handleGenerate}
-              disabled={busy}
+              disabled={busy || !rosterReady}
+              title={!rosterReady ? 'Upload employee data or choose demo roster first' : undefined}
             >
               {stage === STAGE.GENERATING
                 ? 'Generating draft tasks…'
