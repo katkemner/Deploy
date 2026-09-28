@@ -80,6 +80,7 @@ def assign_tasks(team: Team, tasks: List[Task]) -> List[Assignment]:
                     is_required=task.is_required,
                     dependencies=list(task.dependencies),
                     missing_skill=True,
+                    expected_output=task.expected_output,
                 )
             )
             continue
@@ -101,6 +102,7 @@ def assign_tasks(team: Team, tasks: List[Task]) -> List[Assignment]:
                 assigned_to=best.name,
                 assigned_type=best.type,
                 assigned_hours=hours,
+                expected_output=task.expected_output,
             )
         )
 

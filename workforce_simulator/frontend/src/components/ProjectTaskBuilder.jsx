@@ -9,7 +9,23 @@ const BLANK = {
   priority: 1,
   dependencies: [],
   is_required: true,
+  // Acceptance criterion: what "done and correct" looks like. Declared up
+  // front so whoever reviews (especially AI output) can check it quickly.
+  expected_output: '',
+  // Decision-cycle stage; optional. Nudges the AI-vs-human routing priors.
+  stage: '',
 };
+
+// Stage options for the dropdown ('' = untagged).
+const STAGES = [
+  ['', '—'],
+  ['attention', 'Attention (monitor / detect)'],
+  ['intelligence', 'Intelligence (gather / analyze)'],
+  ['design', 'Design (ideas / drafts / prototypes)'],
+  ['choice', 'Choice (evaluate / decide / approve)'],
+  ['implementation', 'Implementation (produce / execute)'],
+  ['feedback', 'Feedback (measure / improve)'],
+];
 
 export default function ProjectTaskBuilder({ tasks, onChange }) {
   const [draft, setDraft] = useState(BLANK);
@@ -24,6 +40,8 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
       ...draft,
       task: draft.task.trim(),
       required_skill: draft.required_skill.trim(),
+      expected_output: (draft.expected_output || '').trim(),
+      stage: draft.stage || null,
       effort_hours: Number(draft.effort_hours) || 0,
       priority: Number(draft.priority) || 1,
       // A task can't depend on itself.
@@ -67,7 +85,9 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
               <th>Skill</th>
               <th>Effort</th>
               <th>Priority</th>
+              <th>Stage</th>
               <th>Dependencies</th>
+              <th>Acceptance criteria</th>
               <th>Required?</th>
               <th></th>
             </tr>
@@ -79,10 +99,18 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
                 <td>{t.required_skill}</td>
                 <td>{t.effort_hours}h</td>
                 <td>{t.priority}</td>
+                <td>{t.stage || '—'}</td>
                 <td style={{ whiteSpace: 'normal' }}>
                   {t.dependencies && t.dependencies.length
                     ? t.dependencies.join(', ')
                     : '—'}
+                </td>
+                <td style={{ whiteSpace: 'normal', maxWidth: 260 }}>
+                  {t.expected_output ? (
+                    t.expected_output
+                  ) : (
+                    <span className="muted">— add one so review is quick</span>
+                  )}
                 </td>
                 <td>
                   {t.is_required ? (
@@ -159,7 +187,31 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
             onChange={(e) => setDraft({ ...draft, priority: e.target.value })}
           />
         </label>
+        <label className="field">
+          <span>Stage (optional — nudges AI-vs-human routing)</span>
+          <select
+            value={draft.stage || ''}
+            onChange={(e) => setDraft({ ...draft, stage: e.target.value })}
+            style={{ width: '100%', padding: 7, borderRadius: 6, border: '1px solid var(--border)' }}
+          >
+            {STAGES.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+
+      <label className="field">
+        <span>Acceptance criteria — how a reviewer knows it’s done right (optional)</span>
+        <textarea
+          value={draft.expected_output || ''}
+          placeholder="e.g. Approved messaging framework with core message, pillars, and tone"
+          onChange={(e) => setDraft({ ...draft, expected_output: e.target.value })}
+          style={{ width: '100%', minHeight: 48, padding: 6, fontFamily: 'inherit', fontSize: 13, border: '1px solid var(--border)', borderRadius: 6 }}
+        />
+      </label>
 
       <label className="field">
         <span>Dependencies (must finish first)</span>

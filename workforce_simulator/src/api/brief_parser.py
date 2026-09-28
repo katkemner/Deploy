@@ -24,7 +24,7 @@ Key guarantees:
 from __future__ import annotations
 
 import os
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -87,8 +87,31 @@ class DraftTask(BaseModel):
     description: Optional[str] = Field(
         default=None, description="One-line description of the work."
     )
+    stage: Optional[
+        Literal[
+            "attention", "intelligence", "design",
+            "choice", "implementation", "feedback",
+        ]
+    ] = Field(
+        default=None,
+        description=(
+            "The decision-cycle stage this task belongs to. attention = "
+            "detecting/monitoring what matters; intelligence = gathering, "
+            "extracting, summarizing, analyzing; design = generating ideas, "
+            "drafting, prototyping alternatives; choice = evaluating, "
+            "selecting, approving, committing; implementation = producing "
+            "deliverables, executing, coordinating; feedback = measuring "
+            "outcomes, diagnosing, recommending changes."
+        ),
+    )
     expected_output: Optional[str] = Field(
-        default=None, description="What 'done' looks like for this task."
+        default=None,
+        description=(
+            "Acceptance criterion: a concrete, checkable statement of what "
+            "'done and correct' looks like, phrased so a reviewer can verify "
+            "the deliverable quickly without redoing the work (name the "
+            "artifact and the conditions it must satisfy)."
+        ),
     )
     needs_user_review: bool = Field(
         default=False,
@@ -137,6 +160,16 @@ _SYSTEM_PROMPT = (
     "points the user will edit.\n"
     "- Break the brief into discrete, concrete tasks. Express ordering via "
     "`dependencies`, referencing other task names exactly.\n"
+    "- Decompose until ONE working arrangement (human-led or AI-led) fits the "
+    "whole task. If a task mixes generating options with choosing between "
+    "them, SPLIT it: the generating part is one task (stage `design` or "
+    "`intelligence`) and the deciding part is its own small task (stage "
+    "`choice`) that depends on it. Example: 'Develop and select campaign "
+    "concept' becomes 'Develop campaign concepts' + 'Select campaign "
+    "concept'.\n"
+    "- Tag every task's `stage`. Choice-stage tasks (evaluating, selecting, "
+    "approving, committing) are decision work: keep them small and separate "
+    "rather than folded into production tasks.\n"
     "- If the brief is too vague to produce tasks, return an empty list and "
     "explain why in `notes`."
 )
