@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Dict, List, Optional
 
+import models
 import provenance
 
 
@@ -407,6 +408,59 @@ def _composites(s: Dict[str, int]):
     return ai_leverage, human_criticality
 
 
+# ---------------------------------------------------------------------------
+# Stage priors (decision-cycle stage -> conservative score nudges)
+# ---------------------------------------------------------------------------
+
+# Per-stage suitability nudges (+/-1 on the 1-5 scale), applied AFTER
+# profile/prior derivation and NEVER over a per-task manual override.
+# Directions follow the evidence - GenAI is strong in intelligence-type work
+# and weak where the task is choosing/committing (Schulte & Kanbach 2026;
+# Vaccaro et al. 2024: decision tasks negative synergy, creation positive).
+# Design gets no nudge: the evidence there is mixed, so we decompose finer
+# instead of biasing. Magnitudes are our own conservative defaults.
+_STAGE_ADJUSTMENTS: Dict[str, Dict[str, int]] = {
+    "attention":      {"ai_capability_fit": +1, "repetition_level": +1},
+    "intelligence":   {"ai_capability_fit": +1, "speed_value": +1},
+    "design":         {},
+    "choice":         {"ai_capability_fit": -1, "human_judgment_need": +1},
+    "implementation": {"repetition_level": +1},
+    "feedback":       {"ai_capability_fit": +1},
+}
+
+
+def normalize_stage(value) -> Optional[str]:
+    """Lower-cased stage name if valid, else None (unknown stages never nudge)."""
+    s = str(value or "").strip().lower()
+    return s if s in models.STAGES else None
+
+
+def apply_stage_adjustments(stage: Optional[str], scores, sources) -> None:
+    """Nudge suitability scores for the task's decision-cycle stage, in place.
+
+    Every nudge is written into that field's provenance (visible in the Why?
+    panel), and a field a user set manually is never touched.
+    """
+    if not stage or scores is None:
+        return
+    for fld, delta in _STAGE_ADJUSTMENTS.get(stage, {}).items():
+        meta = sources.get(fld) or {}
+        if meta.get("source_type") == provenance.MANUAL_INPUT:
+            continue
+        before = scores[fld]
+        after = _clamp_score(before + delta)
+        if after == before:
+            continue
+        scores[fld] = after
+        meta = dict(meta)
+        meta["explanation"] = (
+            meta.get("explanation", "")
+            + f" Adjusted {delta:+d} for the task's '{stage}' stage (was {before})."
+        )
+        meta["stage_adjustment"] = delta
+        sources[fld] = meta
+
+
 def decide_route(scores: Optional[Dict[str, int]], has_profile: bool):
     """Return ``(decision, explanation)`` for a task's scores.
 
@@ -534,6 +588,10 @@ def route_task(task, binding=None, use_priors=False, calibration=None,
     """
     scores, has_profile, sources = derive_scores(
         task, binding, use_priors, workbank_binding, use_workbank)
+    # Decision-cycle stage prior: conservative +/-1 nudges before the decision
+    # rules run (never over manual overrides; provenance records every nudge).
+    stage = normalize_stage(_get_attr(task, "stage", None))
+    apply_stage_adjustments(stage, scores, sources)
     decision, explanation = decide_route(scores, has_profile)
     effort = float(_get_attr(task, "effort_hours", 0) or 0)
     review = estimate_review_hours(decision, scores or {}, effort)
@@ -625,6 +683,9 @@ def route_task(task, binding=None, use_priors=False, calibration=None,
     return {
         "task": _get_attr(task, "task", ""),
         "required_skill": _get_attr(task, "required_skill", ""),
+        # Decision-cycle stage (attention..feedback), when tagged; nudged the
+        # suitability scores per the stage priors above.
+        "stage": stage,
         # The task's pre-declared acceptance criterion: what a reviewer checks
         # AI output against. Declared before work starts, so verification is
         # cheap by design (solve-verify asymmetry).

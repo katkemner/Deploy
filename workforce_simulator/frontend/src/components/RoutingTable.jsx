@@ -288,6 +288,11 @@ export default function RoutingTable({ routing, summary }) {
                 <tr>
                   <td style={{ whiteSpace: 'normal', minWidth: 180 }}>
                     {r.task}
+                    {r.stage && (
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {' '}· {r.stage}
+                      </span>
+                    )}
                     {aiInvolved && r.acceptance_criteria && (
                       <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                         ✓ Verify against: {r.acceptance_criteria}

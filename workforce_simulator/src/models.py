@@ -92,6 +92,20 @@ class Task:
     # Acceptance criterion: what "done and correct" looks like, declared up
     # front so a human can verify AI output cheaply (solve-verify asymmetry).
     expected_output: str = ""
+    # Decision-cycle stage (see STAGES). Optional; nudges routing priors.
+    stage: str = ""
+
+
+# The six recursive decision-cycle stages a task can belong to (Schulte &
+# Kanbach 2026). Tagged by the brief-drafting AI or the user; optional.
+STAGES = (
+    "attention",       # detecting signals, monitoring, prioritizing what matters
+    "intelligence",    # gathering, extracting, summarizing, analyzing
+    "design",          # generating ideas, drafting, prototyping alternatives
+    "choice",          # evaluating, selecting, approving, committing
+    "implementation",  # producing deliverables, executing, coordinating
+    "feedback",        # measuring outcomes, diagnosing, recommending changes
+)
 
 
 @dataclass

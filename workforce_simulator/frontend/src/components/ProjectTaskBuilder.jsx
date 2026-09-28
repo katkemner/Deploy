@@ -12,7 +12,20 @@ const BLANK = {
   // Acceptance criterion: what "done and correct" looks like. Declared up
   // front so whoever reviews (especially AI output) can check it quickly.
   expected_output: '',
+  // Decision-cycle stage; optional. Nudges the AI-vs-human routing priors.
+  stage: '',
 };
+
+// Stage options for the dropdown ('' = untagged).
+const STAGES = [
+  ['', '—'],
+  ['attention', 'Attention (monitor / detect)'],
+  ['intelligence', 'Intelligence (gather / analyze)'],
+  ['design', 'Design (ideas / drafts / prototypes)'],
+  ['choice', 'Choice (evaluate / decide / approve)'],
+  ['implementation', 'Implementation (produce / execute)'],
+  ['feedback', 'Feedback (measure / improve)'],
+];
 
 export default function ProjectTaskBuilder({ tasks, onChange }) {
   const [draft, setDraft] = useState(BLANK);
@@ -28,6 +41,7 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
       task: draft.task.trim(),
       required_skill: draft.required_skill.trim(),
       expected_output: (draft.expected_output || '').trim(),
+      stage: draft.stage || null,
       effort_hours: Number(draft.effort_hours) || 0,
       priority: Number(draft.priority) || 1,
       // A task can't depend on itself.
@@ -71,6 +85,7 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
               <th>Skill</th>
               <th>Effort</th>
               <th>Priority</th>
+              <th>Stage</th>
               <th>Dependencies</th>
               <th>Acceptance criteria</th>
               <th>Required?</th>
@@ -84,6 +99,7 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
                 <td>{t.required_skill}</td>
                 <td>{t.effort_hours}h</td>
                 <td>{t.priority}</td>
+                <td>{t.stage || '—'}</td>
                 <td style={{ whiteSpace: 'normal' }}>
                   {t.dependencies && t.dependencies.length
                     ? t.dependencies.join(', ')
@@ -170,6 +186,20 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
             value={draft.priority}
             onChange={(e) => setDraft({ ...draft, priority: e.target.value })}
           />
+        </label>
+        <label className="field">
+          <span>Stage (optional — nudges AI-vs-human routing)</span>
+          <select
+            value={draft.stage || ''}
+            onChange={(e) => setDraft({ ...draft, stage: e.target.value })}
+            style={{ width: '100%', padding: 7, borderRadius: 6, border: '1px solid var(--border)' }}
+          >
+            {STAGES.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 

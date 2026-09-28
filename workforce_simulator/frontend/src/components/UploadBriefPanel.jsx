@@ -29,6 +29,7 @@ function toTaskInput(d) {
     is_required: true,
     description: d.description || null,
     expected_output: d.expected_output || null,
+  stage: d.stage || null,
   };
 }
 

@@ -227,7 +227,23 @@ class ProjectTaskInput(BaseModel):
     priority: int = 1
     dependencies: List[str] = Field(default_factory=list)
     is_required: bool = True
+    # Decision-cycle stage (attention / intelligence / design / choice /
+    # implementation / feedback). Optional; nudges the routing priors.
+    stage: Optional[str] = None
     routing_scores: Optional[Dict[str, int]] = None
+
+    @field_validator("stage")
+    @classmethod
+    def _normalize_stage(cls, value):
+        if value is None or not str(value).strip():
+            return None
+        s = str(value).strip().lower()
+        from models import STAGES  # local import: schemas stays engine-light
+        if s not in STAGES:
+            raise ValueError(
+                f"stage must be one of {list(STAGES)} (got '{value}')"
+            )
+        return s
     # Optional three-point estimate for Monte-Carlo uncertainty. When omitted,
     # the engine derives a band from ``effort_hours``.
     effort_optimistic: Optional[float] = Field(default=None, gt=0)

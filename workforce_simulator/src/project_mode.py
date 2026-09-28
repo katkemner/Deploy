@@ -74,6 +74,7 @@ def tasks_from_request(task_dicts: List[dict]) -> List[Task]:
                 dependencies=list(t.get("dependencies", []) or []),
                 is_required=bool(t.get("is_required", True)),
                 expected_output=str(t.get("expected_output") or "").strip(),
+                stage=str(t.get("stage") or "").strip().lower(),
             )
         )
     return tasks
