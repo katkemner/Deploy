@@ -456,15 +456,10 @@ def normalize_stage(value) -> Optional[str]:
     return s if s in models.STAGES else None
 
 
-def apply_stage_adjustments(stage: Optional[str], scores, sources) -> None:
-    """Nudge suitability scores for the task's decision-cycle stage, in place.
-
-    Every nudge is written into that field's provenance (visible in the Why?
-    panel), and a field a user set manually is never touched.
-    """
-    if not stage or scores is None:
-        return
-    for fld, delta in _STAGE_ADJUSTMENTS.get(stage, {}).items():
+def _apply_adjustments(scores, sources, deltas: Dict[str, int],
+                       reason: str, meta_key: str) -> None:
+    """Apply +/-1 score nudges in place, with provenance; skip manual fields."""
+    for fld, delta in deltas.items():
         meta = sources.get(fld) or {}
         if meta.get("source_type") == provenance.MANUAL_INPUT:
             continue
@@ -476,10 +471,35 @@ def apply_stage_adjustments(stage: Optional[str], scores, sources) -> None:
         meta = dict(meta)
         meta["explanation"] = (
             meta.get("explanation", "")
-            + f" Adjusted {delta:+d} for the task's '{stage}' stage (was {before})."
+            + f" Adjusted {delta:+d} {reason} (was {before})."
         )
-        meta["stage_adjustment"] = delta
+        meta[meta_key] = delta
         sources[fld] = meta
+
+
+def apply_stage_adjustments(stage: Optional[str], scores, sources) -> None:
+    """Nudge suitability scores for the task's decision-cycle stage, in place.
+
+    Every nudge is written into that field's provenance (visible in the Why?
+    panel), and a field a user set manually is never touched.
+    """
+    if not stage or scores is None:
+        return
+    _apply_adjustments(
+        scores, sources, _STAGE_ADJUSTMENTS.get(stage, {}),
+        f"for the task's '{stage}' stage", "stage_adjustment",
+    )
+
+
+def apply_irreversibility_adjustment(irreversible: bool, scores, sources) -> None:
+    """Raise error cost for hard-to-undo work (autonomy dialed to the cost of
+    errors and reversibility - the 104-study human-AI teaming evidence)."""
+    if not irreversible or scores is None:
+        return
+    _apply_adjustments(
+        scores, sources, {"error_cost": +1},
+        "because the task is marked hard to undo", "irreversibility_adjustment",
+    )
 
 
 def decide_route(scores: Optional[Dict[str, int]], has_profile: bool):
@@ -613,6 +633,8 @@ def route_task(task, binding=None, use_priors=False, calibration=None,
     # rules run (never over manual overrides; provenance records every nudge).
     stage = normalize_stage(_get_attr(task, "stage", None))
     apply_stage_adjustments(stage, scores, sources)
+    irreversible = bool(_get_attr(task, "irreversible", False))
+    apply_irreversibility_adjustment(irreversible, scores, sources)
     decision, explanation = decide_route(scores, has_profile)
     effort = float(_get_attr(task, "effort_hours", 0) or 0)
     review = estimate_review_hours(decision, scores or {}, effort)
@@ -707,6 +729,9 @@ def route_task(task, binding=None, use_priors=False, calibration=None,
         # Decision-cycle stage (attention..feedback), when tagged; nudged the
         # suitability scores per the stage priors above.
         "stage": stage,
+        # Hard-to-undo work: raised error cost; gets a sign-off gate in the
+        # checkpoint plan.
+        "irreversible": irreversible,
         # The task's pre-declared acceptance criterion: what a reviewer checks
         # AI output against. Declared before work starts, so verification is
         # cheap by design (solve-verify asymmetry).

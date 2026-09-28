@@ -14,6 +14,9 @@ const BLANK = {
   expected_output: '',
   // Decision-cycle stage; optional. Nudges the AI-vs-human routing priors.
   stage: '',
+  // Hard to undo once shipped (external-facing, spend, commitments): lowers
+  // AI autonomy and adds a sign-off gate to the checkpoint plan.
+  irreversible: false,
 };
 
 // Stage options for the dropdown ('' = untagged).
@@ -241,6 +244,16 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
           onChange={(e) => setDraft({ ...draft, is_required: e.target.checked })}
         />
         Required skill (unchecked = optional)
+      </label>
+
+      <label className="checkbox-row" style={{ margin: '8px 0' }}>
+        <input
+          type="checkbox"
+          checked={!!draft.irreversible}
+          onChange={(e) => setDraft({ ...draft, irreversible: e.target.checked })}
+        />
+        Hard to undo once shipped (external-facing, spend, or commitments) —
+        gets a human sign-off gate
       </label>
 
       <div className="card-actions" style={{ marginTop: 4 }}>

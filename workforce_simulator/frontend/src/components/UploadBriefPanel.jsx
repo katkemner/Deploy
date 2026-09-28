@@ -30,6 +30,7 @@ function toTaskInput(d) {
     description: d.description || null,
     expected_output: d.expected_output || null,
   stage: d.stage || null,
+  irreversible: !!d.irreversible,
   };
 }
 

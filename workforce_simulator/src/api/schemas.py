@@ -230,6 +230,9 @@ class ProjectTaskInput(BaseModel):
     # Decision-cycle stage (attention / intelligence / design / choice /
     # implementation / feedback). Optional; nudges the routing priors.
     stage: Optional[str] = None
+    # True when the outcome is hard to undo once shipped (external-facing,
+    # spend, commitments). Lowers AI autonomy; adds a sign-off gate.
+    irreversible: bool = False
     routing_scores: Optional[Dict[str, int]] = None
 
     @field_validator("stage")

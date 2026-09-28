@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
+import checkpoints
 import exporter
 import innovation
 import optimizer
@@ -75,6 +76,7 @@ def tasks_from_request(task_dicts: List[dict]) -> List[Task]:
                 is_required=bool(t.get("is_required", True)),
                 expected_output=str(t.get("expected_output") or "").strip(),
                 stage=str(t.get("stage") or "").strip().lower(),
+                irreversible=bool(t.get("irreversible", False)),
             )
         )
     return tasks
@@ -726,6 +728,14 @@ def run_project_simulation(
         burdens[rec_key],
     )
 
+    # Risk-tiered human checkpoint plan for the recommended option: what stays
+    # human-only, where the checkpoints and release gates go, and whether the
+    # review load invites rubber-stamping. Read-only over existing data.
+    checkpoint_plan = checkpoints.build_checkpoint_plan(
+        routing_records, burdens[rec_key],
+        critical_tasks=options[rec_key].critical_path,
+    )
+
     option_payload = {
         "current_team": _option_dict(
             "current_team", current_res, burdens["current_team"]
@@ -770,6 +780,7 @@ def run_project_simulation(
         "comparison_table": comparison_table,
         "task_routing": routing_records,
         "routing_summary": routing_summary,
+        "checkpoint_plan": checkpoint_plan,
         "pareto_front": pareto_preview["pareto_front"],
         "pareto_explanation": pareto_preview["pareto_explanation"],
     }

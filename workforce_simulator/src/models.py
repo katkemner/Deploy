@@ -94,6 +94,10 @@ class Task:
     expected_output: str = ""
     # Decision-cycle stage (see STAGES). Optional; nudges routing priors.
     stage: str = ""
+    # True when the outcome is hard to undo once shipped (external-facing,
+    # spend, commitments). Irreversible work gets lower AI autonomy and a
+    # hard human sign-off gate in the checkpoint plan.
+    irreversible: bool = False
 
 
 # The six recursive decision-cycle stages a task can belong to (Schulte &

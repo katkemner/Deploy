@@ -293,6 +293,15 @@ export default function RoutingTable({ routing, summary }) {
                         {' '}· {r.stage}
                       </span>
                     )}
+                    {r.irreversible && (
+                      <span
+                        className="badge badge-invalid"
+                        style={{ marginLeft: 6 }}
+                        title="Hard to undo once shipped — human sign-off gate before release"
+                      >
+                        hard to undo
+                      </span>
+                    )}
                     {aiInvolved && r.acceptance_criteria && (
                       <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                         ✓ Verify against: {r.acceptance_criteria}
