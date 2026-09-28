@@ -299,7 +299,7 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         title="The work"
         hint="Upload a project brief and let AI draft the task list, or edit tasks by hand. Every task stays editable."
       />
-      <UploadBriefPanel onUseTasks={setTasks} />
+      <UploadBriefPanel onUseTasks={setTasks} rosterReady={rosterSource !== 'none'} />
       {tasks.length === 0 && (
         <p className="section-hint">
           No tasks yet — upload a brief above, add tasks below, or{' '}

@@ -26,6 +26,7 @@ from typing import Dict, List, Optional
 
 import models
 import provenance
+import skill_matching
 
 
 # ---------------------------------------------------------------------------
@@ -157,9 +158,29 @@ def _clamp_score(v: int) -> int:
     return max(1, min(5, int(round(v))))
 
 
+def _resolve_profile_key(skill):
+    """Map a (possibly free-form roster) skill to a canonical profile key.
+
+    Exact keys behave exactly as before; otherwise a deterministic token/stem
+    match bridges roster vocabulary ("Copywriting" -> "writing") so routing
+    still profiles real rosters instead of escalating everything.
+    """
+    key, how = skill_matching.match(skill, SKILL_PROFILES.keys())
+    return key, how
+
+
+def _profile_label(skill) -> str:
+    """Provenance label for the profile a skill resolved to (audit trail)."""
+    key, how = _resolve_profile_key(skill)
+    if key is None or how == "exact":
+        return str(skill)
+    return f"{key} (matched from '{skill}')"
+
+
 def _profile_scores(skill, is_required, priority):
     """Adjusted heuristic profile scores for a skill, or None if unprofiled."""
-    profile = SKILL_PROFILES.get(skill)
+    key, _ = _resolve_profile_key(skill)
+    profile = SKILL_PROFILES.get(key) if key else None
     if profile is None:
         return None
     scores = dict(profile)
@@ -276,8 +297,8 @@ def _derive_scores_with_workbank(task, binding, use_priors, workbank_binding):
         elif profile_scores is not None:
             scores[f] = profile_scores[f]
             meta[f] = _meta(
-                provenance.EXISTING_HEURISTIC, f"skill profile: {skill}",
-                f"Derived from the built-in '{skill}' skill profile.")
+                provenance.EXISTING_HEURISTIC, f"skill profile: {_profile_label(skill)}",
+                f"Derived from the built-in '{_profile_label(skill)}' skill profile.")
         else:
             scores[f] = 3
             meta[f] = _meta(
@@ -328,8 +349,8 @@ def _derive_scores_legacy(task, binding=None, use_priors=False):
             return None, False, meta
         meta = {
             f: _meta(
-                provenance.EXISTING_HEURISTIC, f"skill profile: {skill}",
-                f"Derived from the built-in '{skill}' skill profile.")
+                provenance.EXISTING_HEURISTIC, f"skill profile: {_profile_label(skill)}",
+                f"Derived from the built-in '{_profile_label(skill)}' skill profile.")
             for f in SCORE_FIELDS
         }
         return profile_scores, True, meta
@@ -374,8 +395,8 @@ def _derive_scores_legacy(task, binding=None, use_priors=False):
         elif profile_scores is not None:
             scores[f] = profile_scores[f]
             meta[f] = _meta(
-                provenance.EXISTING_HEURISTIC, f"skill profile: {skill}",
-                f"Derived from the built-in '{skill}' skill profile.")
+                provenance.EXISTING_HEURISTIC, f"skill profile: {_profile_label(skill)}",
+                f"Derived from the built-in '{_profile_label(skill)}' skill profile.")
         else:
             scores[f] = 3
             meta[f] = _meta(

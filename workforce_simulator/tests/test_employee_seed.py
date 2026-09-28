@@ -227,6 +227,30 @@ def test_seed_upload_becomes_active_and_drives_simulation():
         routes._reset_active_roster()
 
 
+def test_brief_vocabulary_follows_active_roster():
+    # The AI-draft skill vocabulary must come from the ACTIVE roster (plus AI
+    # agents), not the demo CSV — the fix for drafts labeling tasks with demo
+    # skills no uploaded roster has.
+    routes._reset_active_roster()
+    csv = (
+        "name,skills\n"
+        "Kai,Copywriting|Brand strategy\n"
+        "Ana,UX research\n"
+    )
+    r = client.post(
+        "/employees/seed-upload",
+        files={"file": ("team.csv", io.BytesIO(_csv(csv)), "text/csv")},
+    )
+    assert r.status_code == 200
+    vocab = routes._available_skills()
+    assert {"Copywriting", "Brand strategy", "UX research"} <= set(vocab)
+    # Demo-roster-only skill names must be gone from the human side.
+    assert "React" not in vocab
+    routes._reset_active_roster()
+    # With no roster chosen, the demo vocabulary is the fallback (unchanged).
+    assert "React" in routes._available_skills()
+
+
 def test_use_demo_roster_resets_to_demo():
     routes._reset_active_roster()
     try:

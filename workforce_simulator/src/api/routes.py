@@ -744,13 +744,16 @@ async def upload_tasks(file: UploadFile = File(...)) -> dict:
 # ---------------------------------------------------------------------------
 
 def _available_skills() -> List[str]:
-    """Union of human skills + AI-agent capabilities, for skill reconciliation.
+    """Union of ACTIVE-roster human skills + AI-agent capabilities.
 
     Injected into the drafting prompt so the LLM picks ``required_skill`` from
     the team's real vocabulary, and used afterwards to flag anything outside it.
+    Uses the active employee seed (uploaded roster, or demo as fallback), so
+    drafted tasks match the people the simulation will actually staff — the
+    fix for AI drafts labeling tasks with demo skills no uploaded roster has.
     """
     skills: set[str] = set()
-    for w in data_loader.load_employees(EMPLOYEES_CSV):
+    for w in _active_employees():
         skills.update(w.skills)
     for w in data_loader.load_ai_agents(AI_AGENTS_CSV):
         skills.update(w.skills)
