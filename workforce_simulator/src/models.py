@@ -89,6 +89,9 @@ class Task:
     priority: int   # 1 == highest priority
     dependencies: List[str] = field(default_factory=list)
     is_required: bool = True
+    # Acceptance criterion: what "done and correct" looks like, declared up
+    # front so a human can verify AI output cheaply (solve-verify asymmetry).
+    expected_output: str = ""
 
 
 @dataclass
@@ -114,6 +117,8 @@ class Assignment:
     start_time: Optional[float] = None
     finish_time: Optional[float] = None
     is_on_critical_path: bool = False
+    # Carried from the Task so the schedule shows what a reviewer checks.
+    expected_output: str = ""
 
     def as_dict(self) -> dict:
         """Plain dict for the ``task_assignments`` export section."""
@@ -145,6 +150,7 @@ class Assignment:
             ),
             "dependencies": list(self.dependencies),
             "is_on_critical_path": self.is_on_critical_path,
+            "acceptance_criteria": self.expected_output or None,
         }
 
 

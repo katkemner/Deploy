@@ -88,7 +88,13 @@ class DraftTask(BaseModel):
         default=None, description="One-line description of the work."
     )
     expected_output: Optional[str] = Field(
-        default=None, description="What 'done' looks like for this task."
+        default=None,
+        description=(
+            "Acceptance criterion: a concrete, checkable statement of what "
+            "'done and correct' looks like, phrased so a reviewer can verify "
+            "the deliverable quickly without redoing the work (name the "
+            "artifact and the conditions it must satisfy)."
+        ),
     )
     needs_user_review: bool = Field(
         default=False,

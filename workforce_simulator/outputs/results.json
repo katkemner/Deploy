@@ -51,7 +51,8 @@
         "start_time": 0.0,
         "finish_time": 14.81,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Data analysis",
@@ -62,7 +63,8 @@
         "start_time": 0.0,
         "finish_time": 30.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Product strategy",
@@ -73,7 +75,8 @@
         "start_time": 0.0,
         "finish_time": 15.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Prototype design",
@@ -84,7 +87,8 @@
         "start_time": 0.0,
         "finish_time": 25.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Frontend build",
@@ -97,7 +101,8 @@
         "dependencies": [
           "Prototype design"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Backend API",
@@ -108,7 +113,8 @@
         "start_time": 0.0,
         "finish_time": 35.0,
         "dependencies": [],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Database setup",
@@ -119,7 +125,8 @@
         "start_time": 0.0,
         "finish_time": 20.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "QA testing",
@@ -133,7 +140,8 @@
           "Frontend build",
           "Backend API"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Documentation",
@@ -146,7 +154,8 @@
         "dependencies": [
           "QA testing"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Project coordination",
@@ -157,7 +166,8 @@
         "start_time": 15.0,
         "finish_time": 30.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       }
     ],
     "task_assignments": [
@@ -327,7 +337,8 @@
         "start_time": 0.0,
         "finish_time": 14.81,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Data analysis",
@@ -338,7 +349,8 @@
         "start_time": 0.0,
         "finish_time": 30.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Product strategy",
@@ -349,7 +361,8 @@
         "start_time": null,
         "finish_time": null,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Prototype design",
@@ -360,7 +373,8 @@
         "start_time": 0.0,
         "finish_time": 25.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Frontend build",
@@ -373,7 +387,8 @@
         "dependencies": [
           "Prototype design"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Backend API",
@@ -384,7 +399,8 @@
         "start_time": 0.0,
         "finish_time": 35.0,
         "dependencies": [],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Database setup",
@@ -395,7 +411,8 @@
         "start_time": 0.0,
         "finish_time": 20.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "QA testing",
@@ -409,7 +426,8 @@
           "Frontend build",
           "Backend API"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Documentation",
@@ -422,7 +440,8 @@
         "dependencies": [
           "QA testing"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Project coordination",
@@ -433,7 +452,8 @@
         "start_time": 0.0,
         "finish_time": 15.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       }
     ],
     "task_assignments": [
@@ -602,7 +622,8 @@
         "start_time": 0.0,
         "finish_time": 14.81,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Data analysis",
@@ -613,7 +634,8 @@
         "start_time": 0.0,
         "finish_time": 30.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Product strategy",
@@ -624,7 +646,8 @@
         "start_time": 0.0,
         "finish_time": 15.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Prototype design",
@@ -635,7 +658,8 @@
         "start_time": 0.0,
         "finish_time": 25.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Frontend build",
@@ -648,7 +672,8 @@
         "dependencies": [
           "Prototype design"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Backend API",
@@ -659,7 +684,8 @@
         "start_time": 0.0,
         "finish_time": 35.0,
         "dependencies": [],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Database setup",
@@ -670,7 +696,8 @@
         "start_time": 0.0,
         "finish_time": 20.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "QA testing",
@@ -684,7 +711,8 @@
           "Frontend build",
           "Backend API"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Documentation",
@@ -697,7 +725,8 @@
         "dependencies": [
           "QA testing"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Project coordination",
@@ -708,7 +737,8 @@
         "start_time": 15.0,
         "finish_time": 30.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       }
     ],
     "task_assignments": [
@@ -876,7 +906,8 @@
         "start_time": 0.0,
         "finish_time": 14.81,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Data analysis",
@@ -887,7 +918,8 @@
         "start_time": 0.0,
         "finish_time": 30.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Product strategy",
@@ -898,7 +930,8 @@
         "start_time": 30.0,
         "finish_time": 45.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Prototype design",
@@ -909,7 +942,8 @@
         "start_time": 0.0,
         "finish_time": 25.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Frontend build",
@@ -922,7 +956,8 @@
         "dependencies": [
           "Prototype design"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Backend API",
@@ -933,7 +968,8 @@
         "start_time": 0.0,
         "finish_time": 35.0,
         "dependencies": [],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Database setup",
@@ -944,7 +980,8 @@
         "start_time": 0.0,
         "finish_time": 20.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "QA testing",
@@ -958,7 +995,8 @@
           "Frontend build",
           "Backend API"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Documentation",
@@ -971,7 +1009,8 @@
         "dependencies": [
           "QA testing"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Project coordination",
@@ -982,7 +1021,8 @@
         "start_time": 0.0,
         "finish_time": 15.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       }
     ],
     "task_assignments": [
@@ -1150,7 +1190,8 @@
         "start_time": 0.0,
         "finish_time": 14.81,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Data analysis",
@@ -1161,7 +1202,8 @@
         "start_time": 0.0,
         "finish_time": 30.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Product strategy",
@@ -1172,7 +1214,8 @@
         "start_time": 30.0,
         "finish_time": 45.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Prototype design",
@@ -1183,7 +1226,8 @@
         "start_time": 0.0,
         "finish_time": 25.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "Frontend build",
@@ -1196,7 +1240,8 @@
         "dependencies": [
           "Prototype design"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Backend API",
@@ -1207,7 +1252,8 @@
         "start_time": 0.0,
         "finish_time": 35.0,
         "dependencies": [],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Database setup",
@@ -1218,7 +1264,8 @@
         "start_time": 0.0,
         "finish_time": 20.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       },
       {
         "task": "QA testing",
@@ -1232,7 +1279,8 @@
           "Frontend build",
           "Backend API"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Documentation",
@@ -1245,7 +1293,8 @@
         "dependencies": [
           "QA testing"
         ],
-        "is_on_critical_path": true
+        "is_on_critical_path": true,
+        "acceptance_criteria": null
       },
       {
         "task": "Project coordination",
@@ -1256,7 +1305,8 @@
         "start_time": 0.0,
         "finish_time": 15.0,
         "dependencies": [],
-        "is_on_critical_path": false
+        "is_on_critical_path": false,
+        "acceptance_criteria": null
       }
     ],
     "task_assignments": [

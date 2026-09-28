@@ -276,10 +276,30 @@ export default function RoutingTable({ routing, summary }) {
             </tr>
           </thead>
           <tbody>
-            {routing.map((r) => (
+            {routing.map((r) => {
+              // AI does (part of) the work on these routes, so the reviewer
+              // needs a pre-declared criterion to check the output against.
+              const aiInvolved =
+                r.routing === 'AI_ONLY' ||
+                r.routing === 'AI_FIRST_HUMAN_REVIEW' ||
+                r.routing === 'HUMAN_FIRST_AI_ASSIST';
+              return (
               <React.Fragment key={r.task}>
                 <tr>
-                  <td>{r.task}</td>
+                  <td style={{ whiteSpace: 'normal', minWidth: 180 }}>
+                    {r.task}
+                    {aiInvolved && r.acceptance_criteria && (
+                      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                        ✓ Verify against: {r.acceptance_criteria}
+                      </div>
+                    )}
+                    {aiInvolved && !r.acceptance_criteria && (
+                      <div style={{ fontSize: 12, marginTop: 2, color: 'var(--amber)' }}>
+                        ⚠ No acceptance criteria — add one in the task list so
+                        review is quick.
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <DecisionBadge decision={r.routing} />
                   </td>
@@ -307,7 +327,8 @@ export default function RoutingTable({ routing, summary }) {
                   </tr>
                 )}
               </React.Fragment>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -625,6 +625,12 @@ def route_task(task, binding=None, use_priors=False, calibration=None,
     return {
         "task": _get_attr(task, "task", ""),
         "required_skill": _get_attr(task, "required_skill", ""),
+        # The task's pre-declared acceptance criterion: what a reviewer checks
+        # AI output against. Declared before work starts, so verification is
+        # cheap by design (solve-verify asymmetry).
+        "acceptance_criteria": (
+            str(_get_attr(task, "expected_output", "") or "").strip() or None
+        ),
         "effort_hours": effort,
         "routing": decision,
         "scores": score_values,

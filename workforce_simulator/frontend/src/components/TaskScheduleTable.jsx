@@ -20,6 +20,7 @@ export default function TaskScheduleTable({ schedule }) {
             <th>Start</th>
             <th>Finish</th>
             <th>Dependencies</th>
+            <th>Acceptance criteria</th>
             <th>Critical?</th>
           </tr>
         </thead>
@@ -38,6 +39,9 @@ export default function TaskScheduleTable({ schedule }) {
               <td>{fmt(s.finish_time)}</td>
               <td style={{ whiteSpace: 'normal' }}>
                 {s.dependencies.length ? s.dependencies.join(', ') : '—'}
+              </td>
+              <td style={{ whiteSpace: 'normal', maxWidth: 240 }}>
+                {s.acceptance_criteria || '—'}
               </td>
               <td>
                 {s.is_on_critical_path ? (
