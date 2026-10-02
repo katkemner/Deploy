@@ -103,6 +103,18 @@ _SENSITIVE_TOKENS = {
     "race", "ethnicity", "ethnic", "gender", "religion", "religious",
     "orientation", "sexual", "marital",
     "disciplinary", "discipline",
+    # Remaining GDPR Art. 9 special categories: political opinions,
+    # philosophical beliefs, trade union membership, genetic and biometric
+    # data, sex life.
+    "political", "politics", "philosophical", "belief", "beliefs",
+    "union", "unions", "unionized", "unionised",
+    "genetic", "genetics", "dna",
+    "biometric", "biometrics", "fingerprint", "fingerprints",
+    "facial", "faceprint", "retina", "voiceprint",
+    "sex", "sexuality",
+    # Pregnancy (health data) and criminal records (GDPR Art. 10).
+    "pregnancy", "pregnant",
+    "criminal", "conviction", "convictions", "arrest", "arrests",
 }
 
 
