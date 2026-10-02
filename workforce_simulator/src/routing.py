@@ -150,6 +150,61 @@ SKILL_PROFILES: Dict[str, Dict[str, int]] = {
 }
 
 
+def _p(fit, judgment, verify, error, context, repetition, speed, learning, collab):
+    return dict(ai_capability_fit=fit, human_judgment_need=judgment,
+                verification_ease=verify, error_cost=error,
+                context_sensitivity=context, repetition_level=repetition,
+                speed_value=speed, human_learning_value=learning,
+                collaboration_value=collab)
+
+
+# Business skill families, so routing works on real rosters (marketing, sales,
+# finance, ops, people work) instead of escalating every non-tech skill.
+# Conservative judgment calls in the same spirit as the profiles above; the
+# skill matcher maps roster wording onto these keys (e.g. "social media" ->
+# social, "Program management" -> program), visible in provenance.
+_BUSINESS_FAMILIES = [
+    # Content and marketing production: AI drafts well, people own the voice.
+    (_p(4, 3, 4, 2, 3, 4, 4, 2, 3), ("social", "content", "seo", "copy")),
+    (_p(4, 3, 3, 3, 4, 3, 4, 2, 4), ("communications", "communication", "comms")),
+    (_p(4, 3, 4, 2, 3, 3, 4, 2, 3), ("presentation", "slides")),
+    # Campaign and marketing management: judgment-led, AI assists.
+    (_p(3, 4, 3, 3, 4, 2, 3, 3, 4), ("campaign", "marketing", "growth")),
+    # Analysis and reporting: strong AI fit, numbers need checking.
+    (_p(4, 3, 3, 3, 3, 4, 4, 2, 3), ("analytics", "analysis", "dashboard", "excel",
+                                     "sql", "bi", "reporting", "crm")),
+    # Visual design: people own taste and brand fit; AI generates variations.
+    (_p(3, 4, 3, 2, 5, 2, 3, 3, 4), ("design", "graphic", "figma", "adobe", "visual",
+                                     "journey", "illustration")),
+    # Creative concepting and storytelling.
+    (_p(3, 4, 2, 2, 4, 1, 4, 3, 4), ("creative", "storytelling", "ideation",
+                                     "brainstorming")),
+    # Program / project / process work: coordination-heavy, human-led.
+    (_p(3, 4, 3, 3, 4, 2, 3, 3, 5), ("program", "project", "agile", "scrum", "process",
+                                     "roadmap", "vendor", "resource")),
+    # People-facing work: relationships, persuasion, trust.
+    (_p(2, 4, 2, 4, 5, 2, 2, 3, 5), ("sales", "negotiation", "pitching", "account",
+                                     "partnership", "relationship", "stakeholder",
+                                     "business")),
+    (_p(2, 4, 2, 2, 5, 1, 2, 3, 5), ("facilitation", "workshop", "interview", "change",
+                                     "coaching", "mentoring")),
+    (_p(3, 3, 3, 2, 4, 3, 3, 3, 5), ("training", "onboarding", "enablement", "adoption")),
+    # Money: AI computes fast, errors are costly.
+    (_p(4, 3, 3, 4, 3, 3, 4, 2, 3), ("finance", "financial", "budget", "accounting",
+                                     "forecast", "pricing", "modeling", "modelling")),
+    # High-stakes judgment: legal, risk, compliance.
+    (_p(3, 5, 2, 5, 5, 2, 2, 3, 3), ("legal", "compliance", "risk", "contracts",
+                                     "regulatory")),
+    # AI tooling itself.
+    (_p(5, 2, 3, 2, 2, 4, 5, 2, 2), ("ai", "prompt", "prompting")),
+    # Competitive / market intelligence.
+    (_p(4, 3, 3, 2, 3, 3, 4, 3, 4), ("competitive", "competitor")),
+]
+for _profile, _keys in _BUSINESS_FAMILIES:
+    for _k in _keys:
+        SKILL_PROFILES.setdefault(_k, dict(_profile))
+
+
 # ---------------------------------------------------------------------------
 # Score derivation
 # ---------------------------------------------------------------------------

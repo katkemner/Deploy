@@ -455,7 +455,7 @@ def test_parse_brief_endpoint_ok_with_mocked_parser(monkeypatch=None):
     from src.api import routes
     from src.api.brief_parser import BriefParseResult
 
-    def fake_parse(text, skills):
+    def fake_parse(text, skills, people_skills=None):
         assert text  # received the body text
         assert isinstance(skills, list) and skills  # real vocabulary injected
         return BriefParseResult(

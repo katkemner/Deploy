@@ -184,11 +184,26 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _build_user_message(text: str, available_skills: List[str]) -> str:
-    skills = ", ".join(available_skills) if available_skills else "(none provided)"
+def _build_user_message(
+    text: str, available_skills: List[str], people_skills: Optional[List[str]] = None
+) -> str:
+    if people_skills is None:
+        skills = ", ".join(available_skills) if available_skills else "(none provided)"
+        header = f"AVAILABLE SKILLS (choose required_skill from these): {skills}\n\n"
+    else:
+        people = {s.lower() for s in people_skills}
+        ai_only = [s for s in available_skills if s.lower() not in people]
+        header = (
+            "AVAILABLE SKILLS (choose required_skill from these).\n"
+            "PEOPLE'S SKILLS - prefer these; they are what the team's people "
+            f"can do: {', '.join(people_skills) or '(none)'}\n"
+            "AI-AGENT-ONLY CAPABILITIES - no person has these; use one only "
+            "when the work is genuinely suited to an AI agent and no "
+            f"person's skill fits: {', '.join(ai_only) or '(none)'}\n\n"
+        )
     return (
-        f"AVAILABLE SKILLS (choose required_skill from these): {skills}\n\n"
-        "Convert the following project brief into draft tasks following the "
+        header
+        + "Convert the following project brief into draft tasks following the "
         "rules. Return only the structured result.\n\n"
         "----- PROJECT BRIEF -----\n"
         f"{text}\n"
@@ -201,7 +216,8 @@ def _build_user_message(text: str, available_skills: List[str]) -> str:
 # ---------------------------------------------------------------------------
 
 def _reconcile_skills(
-    tasks: List[DraftTask], available_skills: List[str]
+    tasks: List[DraftTask], available_skills: List[str],
+    people_skills: Optional[List[str]] = None,
 ) -> List[str]:
     """Force review on any task whose skill isn't in the vocabulary.
 
@@ -220,6 +236,22 @@ def _reconcile_skills(
         if skill.lower() in lookup:
             # Normalise to the canonical casing from the vocabulary.
             t.required_skill = lookup[skill.lower()]
+            # A skill only an AI agent has means no person can cover the task
+            # if AI isn't on the team - flag it so the user can swap in a
+            # person's skill (e.g. "Coordination" vs "Program management").
+            if people_skills is not None and skill.lower() not in {
+                p.lower() for p in people_skills
+            }:
+                t.needs_user_review = True
+                reason = (
+                    f"Only an AI agent has '{t.required_skill}' - nobody on "
+                    "your roster does. If a person should do this, change it "
+                    "to one of their skills."
+                )
+                t.review_reason = (
+                    f"{t.review_reason} {reason}".strip()
+                    if t.review_reason else reason
+                )
             continue
         # Out-of-vocabulary skill: flag for the user.
         if available_skills:  # only meaningful when we provided a list
@@ -238,7 +270,10 @@ def _reconcile_skills(
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def parse_brief(text: str, available_skills: List[str]) -> BriefParseResult:
+def parse_brief(
+    text: str, available_skills: List[str],
+    people_skills: Optional[List[str]] = None,
+) -> BriefParseResult:
     """Draft editable tasks from brief text. The engine is never touched.
 
     Raises :class:`BriefParserUnavailable` (no key / SDK) or
@@ -271,7 +306,7 @@ def parse_brief(text: str, available_skills: List[str]) -> BriefParseResult:
             messages=[
                 {
                     "role": "user",
-                    "content": _build_user_message(text, available_skills),
+                    "content": _build_user_message(text, available_skills, people_skills),
                 }
             ],
             output_format=_ModelOutput,
@@ -318,7 +353,7 @@ def parse_brief(text: str, available_skills: List[str]) -> BriefParseResult:
             502, "The AI returned an empty or unreadable response. Try again."
         )
     tasks = list(model_output.draft_tasks)
-    unmatched = _reconcile_skills(tasks, available_skills)
+    unmatched = _reconcile_skills(tasks, available_skills, people_skills)
 
     return BriefParseResult(
         draft_tasks=tasks,
