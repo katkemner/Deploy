@@ -107,6 +107,13 @@ export default function EmployeeSeedUpload({ status, onActivated }) {
         and the validation report tells you exactly what was assumed.
       </p>
       <p className="section-hint">
+        Optional: a <code>Skill Proficiency</code> column (e.g.{' '}
+        <code>Copywriting: expert; SQL: learning</code>) or notes columns like{' '}
+        <code>Strengths</code> / <code>Growth Areas</code>. They only prefill a
+        quick team-strength check before you run — you confirm every answer,
+        and nothing is stored.
+      </p>
+      <p className="section-hint">
         Note: this seed controls the active employee set used for team
         selection, simulation, <strong>and the brief-to-task AI draft</strong> —
         drafted tasks use your roster’s own skill names, so coverage matches

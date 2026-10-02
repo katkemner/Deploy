@@ -116,4 +116,12 @@ export const api = {
   // confirms) AI drafting of editable tasks. Two separate calls by design.
   extractBriefText: (file) => uploadFile('/projects/extract-brief-text', file),
   parseBrief: (text) => jsonPost('/projects/parse-brief', { text }),
+  // Pre-run strength check: which (person, skill) pairs the tasks need, plus
+  // opt-in AI suggestions from roster notes. Answers are sent with the run
+  // only; the server never stores them.
+  proficiencyCheck: (tasks) =>
+    jsonPost('/proficiency/check', {
+      tasks: tasks.map((t) => ({ task: t.task, required_skill: t.required_skill })),
+    }),
+  proficiencySuggest: (pairs) => jsonPost('/proficiency/suggest', { pairs }),
 };

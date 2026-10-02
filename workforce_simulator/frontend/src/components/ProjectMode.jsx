@@ -5,6 +5,7 @@ import UploadBriefPanel from './UploadBriefPanel.jsx';
 import EmployeeSeedUpload from './EmployeeSeedUpload.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
 import CheckpointPlan from './CheckpointPlan.jsx';
+import ProficiencyCheck, { pairKey } from './ProficiencyCheck.jsx';
 import TaskScheduleTable from './TaskScheduleTable.jsx';
 import RoutingTable from './RoutingTable.jsx';
 
@@ -172,6 +173,14 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
   // no iterations/seed knobs; fixed 500 iterations, seed 42, reproducible).
   const [mc, setMc] = useState(null);
 
+  // Pre-run strength check (relative-capability advice). Answers live only in
+  // this browser session and are sent with each run; the server never stores
+  // them. `seenPairs` = pairs already shown, so the check only reappears when
+  // new tasks bring new person-skill pairs.
+  const [profAnswers, setProfAnswers] = useState({});
+  const [seenPairs, setSeenPairs] = useState(() => new Set());
+  const [profCheck, setProfCheck] = useState(null);
+
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [showRouting, setShowRouting] = useState(false);
 
@@ -187,9 +196,55 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
   function handleRosterActivated(status) {
     setRosterStatus(status);
     if (onEmployeesChange) onEmployeesChange();
-    // Roster changed — results computed against the old roster are stale.
+    // Roster changed — results computed against the old roster are stale,
+    // and so are strength answers about the old roster's people.
     setResult(null);
     setMc(null);
+    setProfAnswers({});
+    setSeenPairs(new Set());
+    setProfCheck(null);
+  }
+
+  // Run button: show the strength check first when this project's tasks
+  // need person-skill pairs not yet seen; otherwise run straight away.
+  async function handleRun(forceCheck = false) {
+    setError(null);
+    try {
+      const check = await api.proficiencyCheck(tasks);
+      const unseen = check.pairs.some((p) => !seenPairs.has(pairKey(p.person, p.skill)));
+      if (check.pairs.length > 0 && (unseen || forceCheck)) {
+        setProfCheck(check);
+        return;
+      }
+    } catch {
+      // The check is optional; if it fails, run without it.
+    }
+    runProjectSimulation(profAnswers);
+  }
+
+  function markSeen(check) {
+    const next = new Set(seenPairs);
+    check.pairs.forEach((p) => next.add(pairKey(p.person, p.skill)));
+    setSeenPairs(next);
+  }
+
+  function saveProficiency(values) {
+    const next = { ...profAnswers, ...values };
+    setProfAnswers(next);
+    markSeen(profCheck);
+    setProfCheck(null);
+    runProjectSimulation(next);
+  }
+
+  function skipProficiency() {
+    const next = { ...profAnswers };
+    profCheck.pairs.forEach((p) => {
+      next[pairKey(p.person, p.skill)] = 'unknown';
+    });
+    setProfAnswers(next);
+    markSeen(profCheck);
+    setProfCheck(null);
+    runProjectSimulation(next);
   }
 
   // The task list starts EMPTY — a real project's tasks come from the brief
@@ -209,7 +264,7 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     setMc(null);
   }
 
-  async function runProjectSimulation() {
+  async function runProjectSimulation(answers = profAnswers) {
     setBusy(true);
     setError(null);
     setMc(null);
@@ -229,6 +284,11 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         // enters them or says how many they have.
         current_team_human_names: employees.map((e) => e.name),
         current_team_ai_agent_names: [],
+        // One-time strength answers for this run (never stored server-side).
+        proficiency_answers: Object.entries(answers).map(([k, answer]) => {
+          const [person, skill] = k.split('||');
+          return { person, skill, answer };
+        }),
       };
       const res = await api.runProjectSimulation(scenario);
       setResult(res);
@@ -422,13 +482,33 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         <button
           className="btn btn-primary"
           style={{ fontSize: 15, padding: '10px 18px' }}
-          onClick={runProjectSimulation}
-          disabled={busy || tasks.length === 0 || rosterSource === 'none' || employees.length === 0}
+          onClick={() => handleRun(false)}
+          disabled={busy || !!profCheck || tasks.length === 0 || rosterSource === 'none' || employees.length === 0}
           title={rosterSource === 'none' ? 'Upload employee data or choose demo roster first' : undefined}
         >
           {busy ? 'Comparing staffing options…' : 'Run Project Simulation'}
         </button>
+        {seenPairs.size > 0 && !profCheck && (
+          <button
+            className="btn"
+            type="button"
+            onClick={() => handleRun(true)}
+            disabled={busy || tasks.length === 0}
+          >
+            Review team strengths
+          </button>
+        )}
       </div>
+
+      {profCheck && (
+        <ProficiencyCheck
+          check={profCheck}
+          answers={profAnswers}
+          onSave={saveProficiency}
+          onSkipAll={skipProficiency}
+          onCancel={() => setProfCheck(null)}
+        />
+      )}
 
       {error && <div className="msg msg-error">{error}</div>}
 

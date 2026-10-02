@@ -8,7 +8,7 @@ in ``models.py`` so the wire format can evolve independently.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -258,6 +258,40 @@ class ProjectTaskInput(BaseModel):
     required_skills: Optional[List[str]] = None
 
 
+class ProficiencyAnswer(BaseModel):
+    """One answer from the pre-run strength check (one-time; never stored).
+
+    ``answer`` is how often the person's work on the skill is approved
+    without changes: almost_always / usually / sometimes / rarely / unknown.
+    """
+
+    person: str
+    skill: str
+    answer: Literal["almost_always", "usually", "sometimes", "rarely", "unknown"]
+
+
+class ProficiencyPair(BaseModel):
+    person: str
+    skill: str
+
+
+class ProficiencyCheckTask(BaseModel):
+    task: str = ""
+    required_skill: str
+
+
+class ProficiencyCheckRequest(BaseModel):
+    """Body for ``POST /proficiency/check``: the project's tasks."""
+
+    tasks: List[ProficiencyCheckTask]
+
+
+class ProficiencySuggestRequest(BaseModel):
+    """Body for ``POST /proficiency/suggest``: the pairs to suggest for."""
+
+    pairs: List[ProficiencyPair]
+
+
 class ParseBriefRequest(BaseModel):
     """Body for ``POST /projects/parse-brief``.
 
@@ -405,6 +439,9 @@ class ProjectScenarioRequest(BaseModel):
     tasks: List[ProjectTaskInput]
     current_team_human_names: List[str] = Field(default_factory=list)
     current_team_ai_agent_names: List[str] = Field(default_factory=list)
+    # One-time answers from the pre-run strength check. Used only to produce
+    # advice for this run; never stored.
+    proficiency_answers: List[ProficiencyAnswer] = Field(default_factory=list)
 
     @field_validator("optimization_objective")
     @classmethod

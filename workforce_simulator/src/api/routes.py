@@ -30,6 +30,7 @@ from models import Team
 from . import brief_extract
 from . import brief_parser
 from . import employee_seed
+from . import proficiency_suggest
 from .schemas import (
     AIAgent,
     Employee,
@@ -40,6 +41,8 @@ from .schemas import (
     ManualTeamRequest,
     MatchTasksRequest,
     ParseBriefRequest,
+    ProficiencyCheckRequest,
+    ProficiencySuggestRequest,
     ProjectScenarioRequest,
     ProjectTask,
     RouteTasksRequest,
@@ -293,6 +296,77 @@ def use_demo_roster() -> dict:
 def active_roster() -> dict:
     """Current roster status for the UI badge + simulation gate."""
     return _roster_status()
+
+
+# ---------------------------------------------------------------------------
+# Pre-run strength check (relative-capability advice inputs)
+# ---------------------------------------------------------------------------
+
+@router.post("/proficiency/check", tags=["data"])
+def proficiency_check(request: ProficiencyCheckRequest) -> dict:
+    """List the (person, skill) pairs this project's tasks actually need.
+
+    Only people in the active roster who have a required skill are listed,
+    each prefilled from the roster file's proficiency column when present.
+    The answers the user gives are a one-time input sent with the run - they
+    are never stored server-side. Notes text is never returned; only whether
+    notes exist (so the UI can offer AI suggestions).
+    """
+    from capability_advice import BUCKETS
+
+    employees = _active_employees()
+    skills: List[str] = []
+    for t in request.tasks:
+        sk = (t.required_skill or "").strip()
+        if sk and sk.lower() not in {s.lower() for s in skills}:
+            skills.append(sk)
+    pairs = []
+    for sk in skills:
+        for w in employees:
+            if not w.has_skill(sk):
+                continue
+            prefill = (getattr(w, "proficiency", {}) or {}).get(sk.lower())
+            pairs.append({
+                "person": w.name,
+                "skill": sk,
+                "prefill": prefill if prefill in BUCKETS else None,
+                "source": "your roster file" if prefill in BUCKETS else None,
+                "has_notes": bool(getattr(w, "notes", "")),
+            })
+    return {
+        "pairs": pairs,
+        "any_prefill": any(p["prefill"] for p in pairs),
+        "any_notes": any(p["has_notes"] for p in pairs),
+        "why": (
+            "To decide whether a person or AI should lead each task, we compare "
+            "how often your people's work on a skill is approved without changes "
+            "with what AI is estimated to do. Where someone is clearly stronger, "
+            "they should lead; where AI is clearly stronger and the work is easy "
+            "to check, a quick spot-check is enough. Skip anything you're unsure "
+            "of - we won't guess. Answers are used for this run only and are not "
+            "stored."
+        ),
+    }
+
+
+@router.post("/proficiency/suggest", tags=["data"])
+def proficiency_suggest_route(request: ProficiencySuggestRequest) -> dict:
+    """AI-suggested strength answers from the roster's notes (opt-in).
+
+    Sends ONLY the notes of the people asked about, plus the pairs, to the AI.
+    Suggestions prefill the check; the user confirms or changes each one.
+    Returns 503 when AI isn't configured, so the manual check still works.
+    """
+    notes = {w.name: getattr(w, "notes", "") for w in _active_employees()
+             if getattr(w, "notes", "")}
+    pairs = [p.model_dump() for p in request.pairs]
+    try:
+        suggestions = proficiency_suggest.suggest(pairs, notes)
+    except brief_parser.BriefParserUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except brief_parser.BriefParserError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
+    return {"suggestions": suggestions}
 
 
 @router.get("/ai-agents", response_model=List[AIAgent], tags=["data"])
