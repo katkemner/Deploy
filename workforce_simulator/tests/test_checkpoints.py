@@ -50,11 +50,11 @@ def test_plan_tiers_no_delegate_sampling_and_midstream():
         _task("Positioning", "Strategy"),                 # HUMAN_ONLY profile
         _task("Format variants", "Documentation"),        # AI_ONLY, repetitive
         _task("Launch email", "Writing", irreversible=True),  # AI-ish + hard to undo
-        _task("Negotiate contracts", "negotiation"),      # unknown -> ESCALATE
+        _task("Weld hull", "underwater welding"),         # unknown -> ESCALATE
     ])
     plan = checkpoints.build_checkpoint_plan(records)
     assert [n["task"] for n in plan["no_delegate"]] == ["Positioning"]
-    assert [u["task"] for u in plan["undecided"]] == ["Negotiate contracts"]
+    assert [u["task"] for u in plan["undecided"]] == ["Weld hull"]
     by_task = {c["task"]: c for c in plan["checkpoints"]}
     assert by_task["Format variants"]["checkpoint"] == "sampling_audit"
     # Irreversible -> high-risk mid-stream checkpoint AND a release gate.

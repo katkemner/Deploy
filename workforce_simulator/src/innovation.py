@@ -76,6 +76,45 @@ SKILL_PROFILE: Dict[str, dict] = {
 }
 
 
+# Business skill families (mirrors routing's), so uploaded rosters from
+# marketing, sales, finance and ops earn capability/function/phase credit.
+# Tags remain team skill-coverage signals only - never personality claims.
+_BUSINESS_FAMILIES = [
+    ({"creative_thinking", "lifelong_learning"}, "content", {"launch"},
+     ("social", "content", "seo", "copy")),
+    ({"leadership_social_influence", "creative_thinking"}, "content", {"launch"},
+     ("communications", "communication", "comms", "presentation", "slides")),
+    ({"systems_thinking", "leadership_social_influence", "agility"}, "marketing", {"launch", "validation"},
+     ("campaign", "marketing", "growth")),
+    ({"analytical_thinking", "technological_literacy"}, "data", {"exploration", "validation"},
+     ("analytics", "analysis", "dashboard", "excel", "sql", "bi", "reporting", "crm")),
+    ({"creative_thinking", "innovation"}, "design", {"prototype"},
+     ("design", "graphic", "figma", "adobe", "visual", "illustration")),
+    ({"creative_thinking", "innovation", "curiosity"}, "design", {"exploration", "prototype"},
+     ("creative", "storytelling", "ideation", "brainstorming", "journey")),
+    ({"systems_thinking", "leadership_social_influence", "agility"}, "ops", {"launch"},
+     ("program", "project", "agile", "scrum", "process", "roadmap", "vendor", "resource")),
+    ({"leadership_social_influence", "resilience"}, "commercial", {"launch"},
+     ("sales", "negotiation", "pitching", "account", "partnership", "relationship",
+      "stakeholder", "business")),
+    ({"leadership_social_influence", "curiosity", "lifelong_learning"}, "people", {"exploration", "launch"},
+     ("facilitation", "workshop", "interview", "change", "coaching", "mentoring")),
+    ({"lifelong_learning", "leadership_social_influence"}, "people", {"launch"},
+     ("training", "onboarding", "enablement", "adoption")),
+    ({"analytical_thinking", "systems_thinking"}, "finance", {"validation"},
+     ("finance", "financial", "budget", "accounting", "forecast", "pricing", "modeling", "modelling")),
+    ({"analytical_thinking", "resilience"}, "legal", {"validation"},
+     ("legal", "compliance", "risk", "contracts", "regulatory")),
+    ({"technological_literacy", "agility", "innovation"}, "engineering", {"prototype"},
+     ("ai", "prompt", "prompting")),
+    ({"curiosity", "analytical_thinking"}, "research", {"exploration"},
+     ("competitive", "competitor")),
+]
+for _tags, _function, _phases, _keys in _BUSINESS_FAMILIES:
+    for _k in _keys:
+        SKILL_PROFILE.setdefault(_k, {"tags": set(_tags), "function": _function, "phases": set(_phases)})
+
+
 def _clamp(v: float) -> float:
     return max(0.0, min(100.0, v))
 

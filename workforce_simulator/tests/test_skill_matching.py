@@ -42,7 +42,11 @@ def test_token_match_leftmost_word():
     assert skill_matching.match("Brand strategy", KEYS) == ("brand", "token")
     assert skill_matching.match("UX research", KEYS) == ("ux", "token")
     assert skill_matching.match("Data analysis", KEYS) == ("data", "token")
-    assert skill_matching.match("campaign planning", KEYS) == ("planning", "token")
+    assert skill_matching.match("team planning", KEYS) == ("planning", "token")
+    # Business families: more specific roster wording now has its own key.
+    assert skill_matching.match("campaign planning", KEYS) == ("campaign", "token")
+    assert skill_matching.match("social media", KEYS) == ("social", "token")
+    assert skill_matching.match("Program management", KEYS) == ("program", "token")
 
 
 def test_stem_match_bridges_suffixes():
@@ -52,13 +56,13 @@ def test_stem_match_bridges_suffixes():
 
 def test_short_keys_never_match_by_substring():
     # "qa", "ux", "api" are too short for substring stems — no accidents.
-    key, how = skill_matching.match("presentations", KEYS)
-    assert key is None and how == "none"
-    assert skill_matching.match("negotiation", KEYS) == (None, "none")
+    # "deluxe" contains "ux" and "capital" contains "api" - neither may match.
+    assert skill_matching.match("deluxe", KEYS) == (None, "none")
+    assert skill_matching.match("capital", KEYS) == (None, "none")
 
 
 def test_unknown_skill_matches_nothing():
-    assert skill_matching.match("Adobe Creative Suite", KEYS) == (None, "none")
+    assert skill_matching.match("underwater welding", KEYS) == (None, "none")
     assert skill_matching.match("", KEYS) == (None, "none")
 
 
@@ -92,7 +96,7 @@ def test_fuzzy_match_is_visible_in_provenance():
 
 
 def test_truly_unknown_skill_still_escalates():
-    records = routing.route_tasks([_task("Negotiate contracts", "negotiation")])
+    records = routing.route_tasks([_task("Weld hull", "underwater welding")])
     assert records[0]["routing"] == routing.ESCALATE
 
 
@@ -152,6 +156,56 @@ def test_no_valid_team_fallback_respects_cap_and_says_so():
         assert "closest fit" in rec["why"].lower() or "No option" in rec["why"]
         assert "No team fully covers" in rec["summary_text"] or \
                "closest fit" in rec["summary_text"].lower()
+
+
+def test_business_skills_route_instead_of_escalating():
+    # Real marketing/ops roster wording (from a user's roster) now profiles.
+    tasks = [_task(n, sk) for n, sk in [
+        ("Social posts", "social media"), ("KPI review", "analytics"),
+        ("Run campaign", "campaign management"), ("Launch plan", "Program management"),
+        ("Legal check", "risk management"), ("Ad layouts", "Figma"),
+    ]]
+    records = routing.route_tasks(tasks)
+    assert all(r["routing"] != routing.ESCALATE for r in records), [
+        (r["task"], r["routing"]) for r in records]
+    by_task = {r["task"]: r["routing"] for r in records}
+    # High-stakes judgment work stays human-owned.
+    assert by_task["Legal check"] == routing.HUMAN_ONLY
+
+
+def test_innovation_credits_business_skills():
+    caps, funcs, phases = innovation._team_capabilities(
+        {"social media", "figma", "program management", "analytics"})
+    assert {"creative_thinking", "analytical_thinking", "systems_thinking"} <= caps
+    assert {"content", "design", "ops", "data"} <= funcs
+
+
+def test_drafting_message_separates_people_skills_from_ai_only():
+    from src.api import brief_parser
+    msg = brief_parser._build_user_message(
+        "brief", ["Coordination", "Program management", "Writing"],
+        people_skills=["Program management"])
+    assert "PEOPLE'S SKILLS" in msg and "Program management" in msg
+    ai_line = [l for l in msg.splitlines() if l.startswith("AI-AGENT-ONLY")][0]
+    assert "Coordination" in ai_line and "Program management" not in ai_line
+    # Without people_skills the message is the original single list.
+    assert "PEOPLE'S SKILLS" not in brief_parser._build_user_message("b", ["UX"])
+
+
+def test_ai_only_skill_is_flagged_for_review():
+    from src.api import brief_parser
+    tasks = [
+        brief_parser.DraftTask(task="Coordinate launch", required_skill="coordination",
+                               effort_hours=4),
+        brief_parser.DraftTask(task="Plan program", required_skill="program management",
+                               effort_hours=4),
+    ]
+    brief_parser._reconcile_skills(
+        tasks, ["Coordination", "Program management"],
+        people_skills=["Program management"])
+    assert tasks[0].required_skill == "Coordination"
+    assert tasks[0].needs_user_review and "Only an AI agent" in tasks[0].review_reason
+    assert not tasks[1].needs_user_review
 
 
 # Allow running directly without pytest.

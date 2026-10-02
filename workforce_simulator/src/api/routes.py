@@ -834,6 +834,18 @@ def _available_skills() -> List[str]:
     return sorted(s for s in skills if s)
 
 
+def _people_skills() -> List[str]:
+    """Skills the active roster's PEOPLE have (no AI-agent capabilities).
+
+    Lets the drafting prompt prefer what people can do, and flag tasks that
+    only an AI agent could cover.
+    """
+    skills: set[str] = set()
+    for w in _active_employees():
+        skills.update(w.skills)
+    return sorted(s for s in skills if s)
+
+
 @router.post("/projects/extract-brief-text", tags=["brief"])
 async def extract_brief_text(file: UploadFile = File(...)) -> dict:
     """Deterministically extract plain text from an uploaded brief (NO LLM).
@@ -869,7 +881,9 @@ def parse_brief(request: ParseBriefRequest) -> dict:
     server (no ``ANTHROPIC_API_KEY``), so the rest of the app keeps working.
     """
     try:
-        result = brief_parser.parse_brief(request.text, _available_skills())
+        result = brief_parser.parse_brief(
+            request.text, _available_skills(), people_skills=_people_skills()
+        )
     except brief_parser.BriefParserUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except brief_parser.BriefParserError as exc:
