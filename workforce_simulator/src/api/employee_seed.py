@@ -22,6 +22,7 @@ from typing import List, Tuple
 
 import pandas as pd
 
+from capability_advice import parse_proficiency_cell
 from models import HUMAN, Worker
 
 # Defaults for engine-needed fields that the spec treats as "recommended".
@@ -53,7 +54,17 @@ _ALIASES = {
     "cost_rate": ["cost_rate", "cost", "hourly_rate", "rate", "bill_rate",
                   "hourly_cost", "cost_per_hour"],
     "quality_score": ["quality_score", "quality"],
+    "proficiency": ["skill_proficiency", "proficiency", "proficiencies",
+                    "skill_levels", "skill_level", "skill_ratings"],
 }
+
+# Free-text columns kept (in memory only) as notes the user can ask the AI to
+# turn into suggested strength levels. Never used by the engine.
+_NOTES_ALIASES = [
+    "strengths", "strength", "growth_areas", "growth_area",
+    "areas_for_growth", "development_areas", "notes", "comments",
+    "manager_notes", "skill_notes",
+]
 
 # Recommended profile fields (captured for preview; NOT used by the engine).
 RECOMMENDED_FIELDS = [
@@ -189,6 +200,7 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
         raise SeedError(400, "The seed file has no data rows.")
 
     idx = _build_alias_index(df.columns)
+    notes_cols = [c for c in df.columns if _norm(c) in _NOTES_ALIASES]
 
     # 2. Engine-essential columns must be present (only name + skills — the
     # engine can default everything else, but it cannot invent people).
@@ -219,6 +231,8 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
     id_generated = 0
     capacity_defaulted = 0
     workload_defaulted = 0
+    proficiency_rows = 0
+    notes_rows = 0
 
     for i, row in df.iterrows():
         rownum = int(i) + 2  # +2 = header row + 1-based
@@ -269,6 +283,19 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
             quality = DEFAULT_QUALITY_SCORE
             quality_defaulted += 1
 
+        # Optional strength inputs (prefill for the pre-run check only).
+        proficiency = parse_proficiency_cell(_cell(row, idx.get("proficiency")))
+        if proficiency:
+            proficiency_rows += 1
+        note_bits = []
+        for c in notes_cols:
+            v = _cell(row, c)
+            if v is not None and str(v).strip():
+                note_bits.append(f"{c}: {str(v).strip()}")
+        notes = "; ".join(note_bits)
+        if notes:
+            notes_rows += 1
+
         workers.append(
             Worker(
                 name=str(name).strip(),
@@ -280,6 +307,8 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
                 cost_rate=float(cost),
                 quality_score=float(quality),
                 speed_multiplier=1.0,
+                proficiency=proficiency,
+                notes=notes,
             )
         )
 
@@ -340,6 +369,10 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
         "sensitive_columns_dropped": sensitive_dropped,
         "defaulted_fields": defaulted_fields,
         "row_errors": row_errors,
+        # Strength inputs found (used only to prefill the pre-run check).
+        "proficiency_found": proficiency_rows,
+        "notes_found": notes_rows,
+        "notes_columns": [str(c) for c in notes_cols],
         "note": (
             "Seed profiles used for simulation — not full employee digital twins. "
             "Recommended fields are captured for preview only and do not affect "

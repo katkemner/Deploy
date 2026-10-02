@@ -16,7 +16,7 @@ assignment / metric logic lives in ``simulator.py``.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 # Worker "type" constants so we never sprinkle raw strings around.
@@ -47,6 +47,12 @@ class Worker:
     cost_rate: float
     quality_score: float           # 0-10 quality rating from the source data
     speed_multiplier: float = 1.0
+    # Uploaded-roster inputs used ONLY to prefill the pre-run strength check
+    # (never by the engine, never returned by the API, never persisted).
+    # proficiency: lower-cased skill -> pass-rate bucket key (see
+    # capability_advice.BUCKETS); notes: free-text strengths/growth notes.
+    proficiency: Dict[str, str] = field(default_factory=dict)
+    notes: str = ""
 
     @property
     def available_hours(self) -> float:

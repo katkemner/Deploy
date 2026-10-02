@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
+import capability_advice
 import checkpoints
 import exporter
 import innovation
@@ -735,6 +736,20 @@ def run_project_simulation(
         routing_records, burdens[rec_key],
         critical_tasks=options[rec_key].critical_path,
     )
+
+    # Relative-capability ADVICE (person vs AI on first-pass rate) for the
+    # recommended option, from the one-time pre-run strength answers. Advice
+    # only: routing, hours, costs and the recommendation are unchanged, and
+    # the answers are not stored.
+    advice = capability_advice.build_advice(
+        routing_records, options[rec_key].assignments,
+        request.get("proficiency_answers") or [],
+    )
+    checkpoint_plan["capability_advice"] = advice
+    advice_by_task = {a["task"]: a for a in advice["items"]}
+    for c in checkpoint_plan["checkpoints"]:
+        if c["task"] in advice_by_task:
+            c["advice"] = advice_by_task[c["task"]]["advice"]
 
     option_payload = {
         "current_team": _option_dict(
