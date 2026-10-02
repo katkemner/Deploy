@@ -47,6 +47,15 @@ const OPTION_DESCRIPTIONS = {
     'The valid team with the strongest cross-functional mix for exploring, prototyping, validating, and launching new ideas — while still covering the project’s required skills.',
 };
 
+const ROSTER_CLEARED =
+  'Your roster was cleared because the server restarted (this happens on every ' +
+  'deploy, because rosters are never saved). Upload it again in step 1 — your ' +
+  'tasks are still here.';
+const ROSTER_CHANGED =
+  'The active roster changed since this page loaded (on the shared staging ' +
+  'server, someone else may have uploaded one). The page has been updated — ' +
+  'check step 1, then run again.';
+
 function StepHeading({ n, title, hint }) {
   return (
     <>
@@ -205,10 +214,32 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     setProfCheck(null);
   }
 
+  // The roster lives only in server memory, so a deploy/restart (or another
+  // visitor's upload on the shared staging server) can change it under an
+  // open page. Before running, compare with the server; if it changed, sync
+  // the page and say so plainly instead of sending stale names.
+  async function resyncRoster() {
+    const server = await api.getActiveRoster();
+    const local = rosterStatus || {};
+    const changed =
+      server.source !== local.source ||
+      server.filename !== local.filename ||
+      server.employee_count !== local.employee_count;
+    if (!changed) return true;
+    handleRosterActivated({ ...server, preview: null });
+    setError(server.source === 'none' ? ROSTER_CLEARED : ROSTER_CHANGED);
+    return false;
+  }
+
   // Run button: show the strength check first when this project's tasks
   // need person-skill pairs not yet seen; otherwise run straight away.
   async function handleRun(forceCheck = false) {
     setError(null);
+    try {
+      if (!(await resyncRoster())) return;
+    } catch {
+      // Couldn't reach the server to compare; the run itself will report it.
+    }
     try {
       const check = await api.proficiencyCheck(tasks);
       const unseen = check.pairs.some((p) => !seenPairs.has(pairKey(p.person, p.skill)));
@@ -316,8 +347,18 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         }
       }
     } catch (err) {
-      setError(err.message);
       setResult(null);
+      if (/unknown names/i.test(err.message)) {
+        // The server's roster no longer matches this page (e.g. a restart
+        // cleared it). Sync and explain instead of showing raw names.
+        try {
+          await resyncRoster();
+        } catch {
+          setError(ROSTER_CLEARED);
+        }
+      } else {
+        setError(err.message);
+      }
     } finally {
       setBusy(false);
     }
