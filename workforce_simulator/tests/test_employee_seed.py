@@ -92,6 +92,42 @@ def test_manager_column_not_flagged_sensitive():
     assert "manager" not in report["sensitive_columns_dropped"]
 
 
+def test_all_gdpr_special_categories_dropped():
+    # Every GDPR Art. 9 special category (plus criminal records, Art. 10)
+    # must be dropped on ingest, with the values never reaching the preview.
+    sensitive = {
+        "Political Party": "Party X",
+        "Philosophical Beliefs": "Stoic",
+        "Trade Union Member": "Yes-Union",
+        "Genetic Markers": "BRCA1",
+        "Biometric ID": "FP-778",
+        "Fingerprint Hash": "ab12cd",
+        "Sex": "SEXVAL-F",
+        "Pregnancy Status": "Expecting",
+        "Criminal Record": "None-known",
+    }
+    header = "name,job_title,department,skills,capacity_hours,workload_hours," + ",".join(sensitive)
+    row = "Ana,Engineer,Platform,Python,40,10," + ",".join(sensitive.values())
+    workers, report, preview = employee_seed.parse_seed(_csv(header + "\n" + row + "\n"), "team.csv")
+    assert set(sensitive) <= set(report["sensitive_columns_dropped"])
+    blob = str(preview) + str(report)
+    for value in sensitive.values():
+        assert value not in blob
+    assert workers[0].name == "Ana"
+
+
+def test_work_columns_survive_the_wider_filter():
+    # Ordinary roster columns (incl. the notes and proficiency columns the
+    # strength check reads) must not be caught by the wider filter.
+    csv = (
+        "Employee,Role,Skills,Hourly Rate,Performance Rating,Strengths,"
+        "Growth Areas,Notes,Skill Proficiency,Department\n"
+        "Kai,PM,Agile,72,4.5,Clear,Delegation,Reliable,Agile: expert,Ops\n"
+    )
+    _, report, _ = employee_seed.parse_seed(_csv(csv), "team.csv")
+    assert report["sensitive_columns_dropped"] == []
+
+
 def test_missing_essential_column_rejected():
     csv = "name,job_title,department,capacity_hours,workload_hours\nA,Eng,Plat,40,10\n"  # no skills
     try:
