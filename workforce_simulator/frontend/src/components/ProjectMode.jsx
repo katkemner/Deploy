@@ -6,6 +6,8 @@ import EmployeeSeedUpload from './EmployeeSeedUpload.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
 import CheckpointPlan from './CheckpointPlan.jsx';
 import ProficiencyCheck, { pairKey } from './ProficiencyCheck.jsx';
+import { listRuns, saveRun, deleteRun } from '../report/savedRuns.js';
+import { buildRunPdf } from '../report/pdf.js';
 import TaskScheduleTable from './TaskScheduleTable.jsx';
 import RoutingTable from './RoutingTable.jsx';
 
@@ -190,6 +192,14 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
   const [seenPairs, setSeenPairs] = useState(() => new Set());
   const [profCheck, setProfCheck] = useState(null);
 
+  // Saved runs live only in this browser (never on the server), so results
+  // survive server restarts and can be reopened or downloaded as a PDF.
+  const [savedRuns, setSavedRuns] = useState(() => listRuns());
+  const [showSaved, setShowSaved] = useState(false);
+  const [viewingSaved, setViewingSaved] = useState(null);
+  const [saveMsg, setSaveMsg] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [showRouting, setShowRouting] = useState(false);
 
@@ -278,6 +288,63 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     runProjectSimulation(next);
   }
 
+  function currentRunRecord() {
+    const rs = rosterStatus || {};
+    return {
+      name: projectName,
+      savedAt: new Date().toISOString(),
+      settings: { objective, deadlineHours, budget, maxTeamSize, projectName, projectGoal },
+      roster: { source: rs.source, filename: rs.filename, count: rs.employee_count },
+      tasks,
+      result,
+      mc,
+    };
+  }
+
+  function handleSaveRun() {
+    const run = saveRun(currentRunRecord());
+    setSavedRuns(listRuns());
+    setSaveMsg(
+      run
+        ? 'Saved in this browser. Find it under "Saved runs" to reopen it or download the PDF.'
+        : "Couldn't save: this browser's storage is unavailable or full."
+    );
+  }
+
+  async function handleDownloadPdf(run) {
+    setPdfBusy(true);
+    try {
+      await buildRunPdf(run || viewingSaved || currentRunRecord());
+    } catch (err) {
+      setError(`Couldn't create the PDF: ${err.message}`);
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  function openSavedRun(run) {
+    const st = run.settings || {};
+    setObjective(st.objective || 'balanced');
+    setDeadlineHours(st.deadlineHours ?? '');
+    setBudget(st.budget ?? '');
+    setMaxTeamSize(st.maxTeamSize ?? 5);
+    setProjectName(st.projectName || run.name);
+    setProjectGoal(st.projectGoal || '');
+    setTasks(run.tasks || []);
+    setResult(run.result);
+    setMc(run.mc || null);
+    setViewingSaved(run);
+    setSaveMsg(null);
+    setShowAlternatives(false);
+    setShowRouting(false);
+  }
+
+  function removeSavedRun(id) {
+    deleteRun(id);
+    setSavedRuns(listRuns());
+    if (viewingSaved && viewingSaved.id === id) setViewingSaved(null);
+  }
+
   // The task list starts EMPTY — a real project's tasks come from the brief
   // upload or manual entry. The sample project is opt-in for exploring.
   function loadSampleTasks() {
@@ -323,6 +390,8 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
       };
       const res = await api.runProjectSimulation(scenario);
       setResult(res);
+      setViewingSaved(null);
+      setSaveMsg(null);
       setShowAlternatives(false);
       setShowRouting(false);
 
@@ -553,9 +622,70 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
 
       {error && <div className="msg msg-error">{error}</div>}
 
+      {savedRuns.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            onClick={() => setShowSaved((v) => !v)}
+            style={{ border: 'none', background: 'none', padding: 0, color: 'var(--primary)', cursor: 'pointer', font: 'inherit' }}
+          >
+            {showSaved ? '▾' : '▸'} Saved runs ({savedRuns.length})
+          </button>
+          {showSaved && (
+            <div className="table-scroll" style={{ marginTop: 6 }}>
+              <table className="table">
+                <tbody>
+                  {savedRuns.map((r) => {
+                    const ro = r.result && r.result.recommendation;
+                    const o = ro && r.result.options[ro.recommended_option];
+                    return (
+                      <tr key={r.id}>
+                        <td style={{ whiteSpace: 'normal' }}>
+                          <strong>{r.name}</strong>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            {new Date(r.savedAt).toLocaleString()}
+                            {o && ` · ${ro.recommended_label} · $${Math.round(o.estimated_cost)} · ${Math.round(o.estimated_duration)}h`}
+                          </div>
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn" type="button" onClick={() => openSavedRun(r)}>Open</button>{' '}
+                          <button className="btn" type="button" disabled={pdfBusy} onClick={() => handleDownloadPdf(r)}>PDF</button>{' '}
+                          <button className="btn" type="button" onClick={() => removeSavedRun(r.id)}>Delete</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="section-hint">
+                Saved only in this browser on this device, never on the server.
+                Team-strength answers are not included.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ---- Results: one recommendation, alternatives on demand ---- */}
       {result && (
         <div style={{ marginTop: 18 }}>
+          {viewingSaved && (
+            <div className="msg" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}>
+              Viewing a saved run from {new Date(viewingSaved.savedAt).toLocaleString()}.
+              It reflects the roster and tasks at that time — run again to update it.
+            </div>
+          )}
+          <div className="card-actions" style={{ marginTop: 0, marginBottom: 8 }}>
+            {!viewingSaved && (
+              <button className="btn" type="button" onClick={handleSaveRun}>
+                Save this run
+              </button>
+            )}
+            <button className="btn" type="button" onClick={() => handleDownloadPdf()} disabled={pdfBusy}>
+              {pdfBusy ? 'Building PDF…' : 'Download PDF'}
+            </button>
+          </div>
+          {saveMsg && <p className="section-hint">{saveMsg}</p>}
           <RecommendationSummary
             recommendation={result.recommendation}
             option={result.options[recommendedKey]}
