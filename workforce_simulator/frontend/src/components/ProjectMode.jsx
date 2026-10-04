@@ -37,9 +37,10 @@ const OPTION_ORDER = [
 // whole active roster is the baseline "current team" — the simulation picks
 // the team and the AI agents; the user never hand-picks either.
 const OPTION_DESCRIPTIONS = {
-  current_team: 'Your whole roster, people only — the no-AI baseline.',
+  current_team:
+    'Starts from your whole roster, people only (the no-AI baseline), and keeps just the people who’d actually get work.',
   ai_assisted_current_team:
-    'Your whole roster plus the AI agents the engine adds where they improve coverage, speed, cost, or risk.',
+    'Starts from your whole roster plus the AI agents the engine adds where they improve coverage, speed, cost, or risk, and keeps just the people who’d actually get work.',
   recommended_balanced_team:
     'The valid team with the best overall weighted score across all metrics.',
   fastest_valid_team:
@@ -137,6 +138,16 @@ function OptionRow({ option, isRecommended, showInnovation, colCount }) {
             {OPTION_DESCRIPTIONS[option.option] && (
               <p className="section-hint" style={{ marginTop: 0 }}>
                 {OPTION_DESCRIPTIONS[option.option]}
+              </p>
+            )}
+            {option.idle_roster_members && option.idle_roster_members.length > 0 && (
+              <p className="section-hint">
+                Not needed for this project: {option.idle_roster_members.join(', ')}.
+              </p>
+            )}
+            {option.over_max_team_size && (
+              <p className="section-hint">
+                Bigger than your max team size, so it can’t be the recommendation.
               </p>
             )}
             {option.missing_required_skills.length > 0 && (

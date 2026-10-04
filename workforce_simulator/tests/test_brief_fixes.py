@@ -274,3 +274,62 @@ def test_brief_targets_drop_impossible_figures():
 def test_brief_prompt_asks_for_labor_budget_only():
     assert "labor_budget" in brief_parser._SYSTEM_PROMPT
     assert "not labor" in brief_parser._SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# Roster options keep only the people who'd get work
+# ---------------------------------------------------------------------------
+
+def test_roster_options_drop_idle_people():
+    roster = [_human("Ana", ["Strategy"]), _human("Ben", ["Writing"])] + [
+        _human(f"Idle{i}", ["Accounting"]) for i in range(8)
+    ]
+    res = _run(tasks=[_t("Plan", "Strategy", 10), _t("Copy", "Writing", 10)],
+               employees=roster, project_weeks=4)
+    opt = res["options"]["current_team"]
+    assert sorted(opt["team_members"]) == ["Ana", "Ben"]
+    assert len(opt["idle_roster_members"]) == 8
+    assert not opt["over_max_team_size"]
+    rec = res["options"][res["recommendation"]["recommended_option"]]
+    assert len(rec["team_members"]) <= 5
+
+
+def test_roster_option_over_max_size_is_never_recommended():
+    skills = ["A", "B", "C", "D", "E", "F", "G"]
+    roster = [_human(f"P{s}", [s]) for s in skills]
+    tasks = [_t(f"Task {s}", s, 5) for s in skills]
+    res = _run(tasks=tasks, employees=roster, project_weeks=4,
+               team_constraints={"max_humans_per_team": 5})
+    opt = res["options"]["current_team"]
+    assert len(opt["team_members"]) == 7 and opt["over_max_team_size"]
+    assert opt["is_valid_team"]
+    # No 5-person team covers 7 skills, so nothing within the cap is valid;
+    # the 7-person roster team is then the only fully staffed fallback.
+    assert res["recommendation"]["recommended_option"] in (
+        "current_team", "ai_assisted_current_team")
+
+
+def test_cap_applies_when_a_valid_team_fits():
+    roster = [_human("A", ["X"]), _human("B", ["Y"]), _human("C", ["Z"]),
+              _human("D", ["X", "Y", "Z"])]
+    tasks = [_t("Do X", "X", 40), _t("Do Y", "Y", 40), _t("Do Z", "Z", 40)]
+    res = _run(tasks=tasks, employees=roster, project_weeks=4,
+               team_constraints={"max_humans_per_team": 2})
+    # A valid team within the cap exists, so the recommendation is within it.
+    rec = res["options"][res["recommendation"]["recommended_option"]]
+    assert rec["is_valid_team"] and len(rec["team_members"]) <= 2
+
+
+def test_choose_recommendation_skips_oversized_valid_options():
+    def fake(people, score):
+        return SimpleNamespace(
+            team=SimpleNamespace(humans=[_human(f"P{i}", ["X"]) for i in range(people)]),
+            missing_required_skills=[], total_score=score, estimated_cost=100,
+            required_skill_coverage_score=100,
+        )
+    options = {"current_team": fake(10, 99), "recommended_balanced_team": fake(3, 80)}
+    assert project_mode.choose_recommendation(options, "balanced", 5) == \
+        "recommended_balanced_team"
+    # Without a cap (or nothing within it), the best valid option wins.
+    assert project_mode.choose_recommendation(options, "balanced") == "current_team"
+    assert project_mode.choose_recommendation(options, "balanced", 2) == "current_team"
