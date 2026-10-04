@@ -22,6 +22,7 @@ from dataclasses import replace
 from typing import List, Optional, Tuple
 
 from config_loader import SimConfig
+import outside_help
 from models import Task, Team, Worker
 from project_mode import ProjectModeError, tasks_from_request
 from simulator import simulate_team
@@ -138,7 +139,20 @@ def run_uncertainty(
     low_factor = float(request.get("default_low_factor", DEFAULT_LOW_FACTOR))
     high_factor = float(request.get("default_high_factor", DEFAULT_HIGH_FACTOR))
 
-    humans_by = {w.name: w for w in employees}
+    # Same inputs as Project Mode: weekly roster hours scaled to the project,
+    # and outside-help placeholders for skills nobody has (so the team names
+    # the recommendation returns resolve here too).
+    weeks, _, _ = outside_help.resolve_weeks(
+        request.get("project_weeks"), request.get("deadline_target_hours")
+    )
+    employees = outside_help.scale_capacity(employees, weeks)
+    all_tasks = tasks_from_request(task_dicts)
+    gaps = outside_help.gap_skills(all_tasks, employees, ai_agents)
+    outsiders = outside_help.outside_workers(
+        gaps, all_tasks, request.get("outside_help_rate")
+    )
+
+    humans_by = {w.name: w for w in list(employees) + outsiders}
     ais_by = {w.name: w for w in ai_agents}
     human_names = request.get("human_names", []) or []
     ai_names = request.get("ai_agent_names", []) or []
@@ -188,13 +202,19 @@ def run_uncertainty(
 
     deadline = request.get("deadline_target_hours")
     budget = request.get("budget_target")
+    # When some work has nobody to do it, durations and costs leave it out,
+    # so "chance of hitting the deadline/budget" would be fiction: report none.
+    unstaffed = [a.task for a in baseline.assignments if a.missing_skill]
+    # Outside help with no rate is costed at $0, so a budget chance would
+    # overstate it too.
+    cost_partial = any(outside_help.is_outside(w) and not w.cost_rate for w in team.humans)
     prob_deadline = (
         round(sum(1 for d in durations if d <= float(deadline)) / iterations, 4)
-        if deadline is not None else None
+        if deadline is not None and not unstaffed else None
     )
     prob_budget = (
         round(sum(1 for c in costs if c <= float(budget)) / iterations, 4)
-        if budget is not None else None
+        if budget is not None and not unstaffed and not cost_partial else None
     )
 
     return {
@@ -204,6 +224,8 @@ def run_uncertainty(
         "team": {"humans": team.human_names, "ai_agents": team.ai_names},
         "is_valid_team": baseline.is_valid_team,
         "missing_required_skills": baseline.missing_required_skills,
+        "unstaffed_tasks": unstaffed,
+        "cost_excludes_outside_help": cost_partial,
         "effort_model": {
             "distribution": "triangular",
             "default_low_factor": low_factor,

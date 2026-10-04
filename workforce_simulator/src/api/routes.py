@@ -31,7 +31,9 @@ from . import brief_extract
 from . import brief_parser
 from . import employee_seed
 from . import proficiency_suggest
+from . import skill_mapper
 from .schemas import (
+    SkillMapRequest,
     AIAgent,
     Employee,
     CalibrationApplyRequest,
@@ -367,6 +369,19 @@ def proficiency_suggest_route(request: ProficiencySuggestRequest) -> dict:
     except brief_parser.BriefParserError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.message)
     return {"suggestions": suggestions}
+
+
+@router.post("/skills/map", tags=["data"])
+def skills_map(request: SkillMapRequest) -> dict:
+    """Suggest a roster skill for each task skill nobody on the roster has.
+
+    Matches by meaning with AI when configured, else by shared words. Only
+    the skill names are sent to the AI - no people, notes or brief text.
+    Suggestions only: the user confirms each match before running.
+    """
+    return skill_mapper.map_skills(
+        request.skills, _people_skills(), _available_skills()
+    )
 
 
 @router.get("/ai-agents", response_model=List[AIAgent], tags=["data"])

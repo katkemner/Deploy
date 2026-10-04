@@ -197,4 +197,7 @@ export const api = {
       tasks: tasks.map((t) => ({ task: t.task, required_skill: t.required_skill })),
     }),
   proficiencySuggest: (pairs) => jsonPost('/proficiency/suggest', { pairs }),
+  // Pre-run skill check: suggest a roster skill for each task skill nobody
+  // has (by meaning with AI when configured, else by shared words).
+  mapSkills: (skills) => jsonPost('/skills/map', { skills }),
 };

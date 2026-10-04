@@ -26,6 +26,7 @@ import checkpoints
 import exporter
 import innovation
 import optimizer
+import outside_help
 import pareto
 import routing
 from config_loader import SimConfig
@@ -486,8 +487,9 @@ def build_recommendation(
 
 def _burden(result: SimulationResult, records: List[dict]) -> dict:
     """Reviewer burden + bottleneck for an option's team, from the routing."""
+    reviewers = [w for w in result.team.humans if not outside_help.is_outside(w)]
     return routing.reviewer_burden_for_team(
-        records, result.team.humans, len(result.team.ai_agents) > 0
+        records, reviewers, len(result.team.ai_agents) > 0
     )
 
 
@@ -510,6 +512,14 @@ def _option_dict(
     data["reviewer_bottleneck"] = burden["reviewer_bottleneck"]
     data["innovation_score"] = result.innovation_score
     data["innovation_components"] = result.innovation_components
+    # Work this team can't do: its cost/duration leave these hours out, so
+    # the UI must never present them as a full plan.
+    data["unstaffed_hours"] = round(
+        sum(a.effort_hours for a in result.assignments if a.missing_skill), 2
+    )
+    data["outside_help_members"] = [
+        w.name for w in result.team.humans if outside_help.is_outside(w)
+    ]
     if ai_added is not None:
         data["ai_agents_added"] = [w.name for w in ai_added]
         data["ai_assist_notes"] = ai_notes or []
@@ -581,6 +591,19 @@ def run_project_simulation(
     if not tasks:
         raise ProjectModeError("At least one task is required.")
 
+    # Roster hours are per week: scale to the project's length.
+    deadline_hours = request.get("deadline_target_hours")
+    weeks, _, _ = outside_help.resolve_weeks(request.get("project_weeks"), deadline_hours)
+    employees = outside_help.scale_capacity(employees, weeks)
+
+    # Work nobody can do gets a labelled outside-help placeholder instead of
+    # silently vanishing from cost and duration. The roster part of each team
+    # is chosen on the work the roster CAN do.
+    rate = request.get("outside_help_rate")
+    gaps = outside_help.gap_skills(tasks, employees, ai_agents)
+    outsiders = outside_help.outside_workers(gaps, tasks, rate)
+    engine_tasks = outside_help.staffable_tasks(tasks, gaps) if gaps else tasks
+
     cfg = apply_constraints(config, request.get("team_constraints"))
     require_full = cfg.require_full_required_skill_coverage
 
@@ -605,22 +628,30 @@ def run_project_simulation(
     current_ais = [ais_by[n] for n in current_ai_names]
 
     # 1. Current team exactly as selected.
+    if not engine_tasks:
+        # Nothing at all is staffable from the roster: every option is the
+        # outside help alone (plus nobody), reported honestly below.
+        return _all_outside_result(
+            request, objective, tasks, outsiders, gaps, rate,
+            cfg, calibration, prior_bindings, workbank_bindings, use_workbank,
+        )
+
     current_res = simulate_team(
-        Team(current_humans, current_ais), tasks, require_full, calibration
+        Team(current_humans, current_ais), engine_tasks, require_full, calibration
     )
 
     # 2. AI-assisted current team: the human team + greedily chosen agents.
     ai_added, ai_notes = build_ai_assisted_team(
-        current_humans, ai_agents, tasks, require_full,
+        current_humans, ai_agents, engine_tasks, require_full,
         cfg.max_ai_agents_per_team, calibration,
     )
     assisted_res = simulate_team(
-        Team(current_humans, ai_added), tasks, require_full, calibration
+        Team(current_humans, ai_added), engine_tasks, require_full, calibration
     )
 
     # 3. Whole population of valid team combinations.
     all_results = optimizer.simulate_all_teams(
-        employees, ai_agents, tasks, cfg, calibration
+        employees, ai_agents, engine_tasks, cfg, calibration
     )
 
     # Score everything together so totals/cost-efficiency are comparable.
@@ -711,6 +742,24 @@ def run_project_simulation(
         "most_innovative_valid_team": most_innovative,
     }
 
+    if outsiders:
+        # Add the outside help to every option and re-run it on ALL the work,
+        # so every reported cost/duration/schedule includes the gap work.
+        options = {
+            k: simulate_team(
+                Team(list(r.team.humans) + outsiders, list(r.team.ai_agents)),
+                tasks, require_full, calibration,
+            )
+            for k, r in options.items()
+        }
+        optimizer.finalize_scores(list(options.values()), cfg)
+        current_res = options["current_team"]
+        assisted_res = options["ai_assisted_current_team"]
+        balanced = options["recommended_balanced_team"]
+        fastest = options["fastest_valid_team"]
+        cheapest = options["lowest_cost_valid_team"]
+        most_innovative = options["most_innovative_valid_team"]
+
     # Per-option review/rework burden from the (team-independent) routing.
     burdens = {k: _burden(options[k], routing_records) for k in OPTION_LABELS}
 
@@ -728,6 +777,8 @@ def run_project_simulation(
         request.get("deadline_target_hours"), request.get("budget_target"),
         burdens[rec_key],
     )
+    staffing_gap = outside_help.gap_summary(tasks, gaps, rate)
+    _add_outside_help_note(recommendation, staffing_gap)
 
     # Risk-tiered human checkpoint plan for the recommended option: what stays
     # human-only, where the checkpoints and release gates go, and whether the
@@ -798,4 +849,104 @@ def run_project_simulation(
         "checkpoint_plan": checkpoint_plan,
         "pareto_front": pareto_preview["pareto_front"],
         "pareto_explanation": pareto_preview["pareto_explanation"],
+        "staffing_gap": staffing_gap,
+        "capacity_basis": outside_help.capacity_basis(
+            request.get("project_weeks"), deadline_hours
+        ),
+    }
+
+
+def _add_outside_help_note(recommendation: dict, gap: dict) -> None:
+    """Make the outside-help gap impossible to miss in the summary."""
+    if not gap["tasks"]:
+        return
+    text = recommendation["summary_text"]
+    old_risk = recommendation["biggest_risk"]
+    if old_risk.startswith("low"):
+        new_risk = (
+            f"{gap['hours']:g}h of work depends on outside help "
+            f"({', '.join(gap['skills'])}) that you still need to find"
+        )
+        recommendation["biggest_risk"] = new_risk
+        text = text.replace(f"Biggest risk: {old_risk}.", f"Biggest risk: {new_risk}.")
+    old_next = recommendation["what_to_change_next"]
+    if old_next == "reduce optional scope or proceed as planned":
+        new_next = (
+            "line up outside help for " + ", ".join(gap["skills"])
+            + " (or add someone with those skills to your roster)"
+        )
+        recommendation["what_to_change_next"] = new_next
+        text = text.replace(f"Next: {old_next}.", f"Next: {new_next}.")
+    recommendation["summary_text"] = f"{gap['message']} {text}"
+
+
+def _all_outside_result(
+    request, objective, tasks, outsiders, gaps, rate,
+    cfg, calibration, prior_bindings, workbank_bindings, use_workbank,
+) -> dict:
+    """No task matches anyone on the roster: say so, with no fake team.
+
+    Every option is the outside help alone. Numbers cover only that outside
+    work (cost only when a rate is given), and the summary says plainly that
+    the roster can't do any of it.
+    """
+    require_full = cfg.require_full_required_skill_coverage
+    res = simulate_team(Team(list(outsiders), []), tasks, require_full, calibration)
+    optimizer.finalize_scores([res], cfg)
+    use_priors = bool(getattr(cfg, "use_public_priors_for_scoring", False))
+    routing_records = routing.route_tasks(
+        tasks, bindings=prior_bindings, use_priors=use_priors, calibration=calibration,
+        workbank_bindings=workbank_bindings, use_workbank=use_workbank,
+    )
+    burden = _burden(res, routing_records)
+    gap = outside_help.gap_summary(tasks, gaps, rate)
+    options = {}
+    for k in OPTION_LABELS:
+        options[k] = _option_dict(k, res, burden)
+    message = (
+        "Nobody on your roster has the skills these tasks need, so there is no "
+        "team to recommend. " + gap["message"] + " Check that the tasks' "
+        "skills use your roster's wording (the skill check before running can "
+        "match them for you), or add people with these skills."
+    )
+    checkpoint_plan = checkpoints.build_checkpoint_plan(routing_records, burden)
+    checkpoint_plan["capability_advice"] = capability_advice.build_advice(
+        routing_records, res.assignments, []
+    )
+    return {
+        "project_name": request.get("project_name", ""),
+        "project_goal": request.get("project_goal", ""),
+        "optimization_objective": objective,
+        "recommendation": {
+            "recommended_option": "current_team",
+            "recommended_label": "No roster team - outside help only",
+            "why": message,
+            "main_bottleneck": "none of the work matches your roster",
+            "critical_path": res.critical_path,
+            "biggest_risk": "all of the work depends on outside help: " + ", ".join(gaps),
+            "ai_contribution": "no AI agent has these skills either",
+            "ai_time_verdict": "",
+            "reviewer_bottleneck_note": "",
+            "what_to_change_next": (
+                "map the tasks' skills to your roster's skills, or add people "
+                "with " + ", ".join(gaps)
+            ),
+            "innovation_score": 0,
+            "innovation_components": {},
+            "summary_text": message,
+            "roster_covers_nothing": True,
+        },
+        "options": options,
+        "comparison_table": [
+            _comparison_row(k, res, burden) for k in OPTION_LABELS
+        ],
+        "task_routing": routing_records,
+        "routing_summary": routing.summarize_routing(routing_records),
+        "checkpoint_plan": checkpoint_plan,
+        "pareto_front": [],
+        "pareto_explanation": "",
+        "staffing_gap": gap,
+        "capacity_basis": outside_help.capacity_basis(
+            request.get("project_weeks"), request.get("deadline_target_hours")
+        ),
     }

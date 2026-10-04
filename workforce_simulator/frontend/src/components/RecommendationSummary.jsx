@@ -21,6 +21,14 @@ function pct(value) {
 // One plain-English sentence from the Monte Carlo run: realistic finish and
 // the chance of hitting the deadline/budget targets (when set).
 function mcLine(mc) {
+  // With work nobody can do, the finish time leaves it out: don't present it
+  // as a realistic finish.
+  if (mc.unstaffed_tasks && mc.unstaffed_tasks.length) {
+    return (
+      `No realistic finish or deadline chance: ${mc.unstaffed_tasks.length} task(s) ` +
+      'have nobody to do them, so any estimate would leave that work out.'
+    );
+  }
   const parts = [
     `Realistic finish: ~${mc.duration.p50}h (optimistic ${mc.duration.p10}h, conservative ${mc.duration.p90}h).`,
   ];
@@ -33,11 +41,15 @@ function mcLine(mc) {
     parts.push(
       `Chance of staying within $${mc.budget_target}: ${pct(mc.probability_within_budget)}.`
     );
+  } else if (mc.cost_excludes_outside_help && mc.budget_target) {
+    parts.push('No budget chance shown: the outside help has no hourly rate yet.');
   }
   return parts.join(' ');
 }
 
-export default function RecommendationSummary({ recommendation, option, mc, showInnovation }) {
+export default function RecommendationSummary({
+  recommendation, option, gap, capacityBasis, mc, showInnovation,
+}) {
   const [showSchedule, setShowSchedule] = useState(false);
   if (!recommendation) return null;
   const r = recommendation;
@@ -65,9 +77,29 @@ export default function RecommendationSummary({ recommendation, option, mc, show
         </div>
       )}
 
+      {gap && gap.message && (
+        <div
+          className="msg"
+          style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--border)' }}
+        >
+          <strong>Outside help needed.</strong> {gap.message}
+        </div>
+      )}
+
+      {option && option.unstaffed_hours > 0 && (
+        <div className="msg msg-error">
+          This team can’t do {option.unstaffed_hours}h of the work, and the
+          cost and hours below leave it out — treat them as incomplete.
+        </div>
+      )}
+
       {option && (
         <p style={{ margin: '4px 0 8px', fontSize: 14 }}>
-          <strong>${option.estimated_cost}</strong> ·{' '}
+          <strong>${option.estimated_cost}</strong>
+          {gap && gap.tasks && gap.tasks.length > 0 && !gap.cost_included && (
+            <span className="muted"> + outside help (no rate set)</span>
+          )}{' '}
+          ·{' '}
           <strong>{option.estimated_duration}h</strong> ·{' '}
           {option.required_skill_coverage_score}% required-skill coverage · risk{' '}
           {option.risk_score}
@@ -79,6 +111,11 @@ export default function RecommendationSummary({ recommendation, option, mc, show
 
       {mc && (
         <p style={{ margin: '4px 0 8px', fontSize: 14 }}>{mcLine(mc)}</p>
+      )}
+      {capacityBasis && (
+        <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+          {capacityBasis.explanation}
+        </p>
       )}
 
       <div className="explanation" style={{ marginTop: 0 }}>

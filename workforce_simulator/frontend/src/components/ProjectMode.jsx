@@ -6,6 +6,7 @@ import EmployeeSeedUpload from './EmployeeSeedUpload.jsx';
 import RecommendationSummary from './RecommendationSummary.jsx';
 import CheckpointPlan from './CheckpointPlan.jsx';
 import ProficiencyCheck, { pairKey } from './ProficiencyCheck.jsx';
+import SkillCheck, { OUTSIDE } from './SkillCheck.jsx';
 import { listRuns, saveRun, deleteRun } from '../report/savedRuns.js';
 import { buildRunPdf } from '../report/pdf.js';
 import TaskScheduleTable from './TaskScheduleTable.jsx';
@@ -107,7 +108,14 @@ function OptionRow({ option, isRecommended, showInnovation, colCount }) {
           )}
         </td>
         <td>${option.estimated_cost}</td>
-        <td>{option.estimated_duration}h</td>
+        <td>
+          {option.estimated_duration}h
+          {option.unstaffed_hours > 0 && (
+            <div className="muted" style={{ fontSize: 11 }} title="This team can't do some of the work; its cost and hours leave that work out.">
+              +{option.unstaffed_hours}h not staffed
+            </div>
+          )}
+        </td>
         <td>{option.required_skill_coverage_score}%</td>
         <td>{option.risk_score}</td>
         {showInnovation && <td>{option.innovation_score}</td>}
@@ -173,6 +181,19 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     'Staff and deliver the project with the right mix of people and AI agents.'
   );
   const [maxTeamSize, setMaxTeamSize] = useState(5);
+  // Roster hours are per week; the project length turns them into project
+  // hours. Blank = derived from the deadline (hours / 40), else 1 week.
+  const [projectWeeks, setProjectWeeks] = useState('');
+  // Hourly rate for outside help on skills nobody on the roster has. Blank =
+  // that work is still scheduled but its cost isn't included (and we say so).
+  const [outsideRate, setOutsideRate] = useState('');
+  // Where the targets came from, when prefilled from a brief.
+  const [briefNote, setBriefNote] = useState(null);
+
+  // Pre-run skill check: task skills nobody has, matched to roster skills.
+  // `confirmedOutside` = skills the user already said need outside help.
+  const [skillCheck, setSkillCheck] = useState(null);
+  const [confirmedOutside, setConfirmedOutside] = useState(() => new Set());
 
   const [tasks, setTasks] = useState([]);
 
@@ -222,6 +243,8 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     setProfAnswers({});
     setSeenPairs(new Set());
     setProfCheck(null);
+    setSkillCheck(null);
+    setConfirmedOutside(new Set());
   }
 
   // The roster lives only in server memory, so a deploy/restart (or another
@@ -241,8 +264,9 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     return false;
   }
 
-  // Run button: show the strength check first when this project's tasks
-  // need person-skill pairs not yet seen; otherwise run straight away.
+  // Run button: first the skill check (task skills nobody on the roster
+  // has), then the strength check when this project's tasks need
+  // person-skill pairs not yet seen; otherwise run straight away.
   async function handleRun(forceCheck = false) {
     setError(null);
     try {
@@ -251,7 +275,45 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
       // Couldn't reach the server to compare; the run itself will report it.
     }
     try {
-      const check = await api.proficiencyCheck(tasks);
+      const skills = [...new Set(tasks.map((t) => t.required_skill))];
+      const m = await api.mapSkills(skills);
+      const pending = m.items.filter((i) => !confirmedOutside.has(i.skill.toLowerCase()));
+      if (pending.length > 0) {
+        setSkillCheck({ ...m, items: pending, forceCheck });
+        return;
+      }
+    } catch {
+      // The skill check is a helper; if it fails, carry on - unmatched work
+      // still shows up honestly as outside help in the results.
+    }
+    continueAfterSkillCheck(tasks, forceCheck, {});
+  }
+
+  function applySkillCheck(choices, rate) {
+    const byLower = {};
+    Object.entries(choices).forEach(([skill, choice]) => {
+      byLower[skill.toLowerCase()] = choice;
+    });
+    const next = tasks.map((t) => {
+      const choice = byLower[String(t.required_skill).trim().toLowerCase()];
+      if (!choice || choice === OUTSIDE) return t;
+      return { ...t, required_skill: choice, matched_from: t.matched_from || t.required_skill };
+    });
+    const outside = new Set(confirmedOutside);
+    Object.entries(byLower).forEach(([skill, choice]) => {
+      if (choice === OUTSIDE) outside.add(skill);
+    });
+    const forceCheck = skillCheck && skillCheck.forceCheck;
+    setConfirmedOutside(outside);
+    setOutsideRate(rate);
+    setTasks(next);
+    setSkillCheck(null);
+    continueAfterSkillCheck(next, forceCheck, { taskList: next, rate });
+  }
+
+  async function continueAfterSkillCheck(taskList, forceCheck, overrides) {
+    try {
+      const check = await api.proficiencyCheck(taskList);
       const unseen = check.pairs.some((p) => !seenPairs.has(pairKey(p.person, p.skill)));
       if (check.pairs.length > 0 && (unseen || forceCheck)) {
         setProfCheck(check);
@@ -260,7 +322,42 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     } catch {
       // The check is optional; if it fails, run without it.
     }
-    runProjectSimulation(profAnswers);
+    runProjectSimulation(profAnswers, overrides);
+  }
+
+  // Tasks from the brief, plus the budget/timeline the brief states.
+  function useBriefTasks(taskList, targets) {
+    setTasks(taskList);
+    setResult(null);
+    setMc(null);
+    if (!targets) {
+      setBriefNote(null);
+      return;
+    }
+    const notes = [];
+    const fmt = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+    if (targets.labor_budget) {
+      setBudget(String(Math.round(targets.labor_budget)));
+      notes.push(
+        `Budget target set to ${fmt(targets.labor_budget)}, the brief’s budget for people` +
+          (targets.total_budget ? ` (of ${fmt(targets.total_budget)} total)` : '') + '.'
+      );
+    } else if (targets.total_budget) {
+      setBudget(String(Math.round(targets.total_budget)));
+      notes.push(
+        `Budget target set to the brief’s total budget, ${fmt(targets.total_budget)}. ` +
+          'If part of it is for ads, tools or materials rather than people, lower it.'
+      );
+    }
+    if (targets.budget_notes) notes.push(`Brief: “${targets.budget_notes}”`);
+    if (targets.timeline_weeks) {
+      const w = Math.round(targets.timeline_weeks * 10) / 10;
+      setProjectWeeks(String(w));
+      setDeadlineHours(String(Math.round(w * 40)));
+      notes.push(`Project length set to ${w} weeks (deadline ${Math.round(w * 40)} working hours).`);
+    }
+    if (targets.timeline_notes) notes.push(`Brief: “${targets.timeline_notes}”`);
+    setBriefNote(notes.length ? notes.join(' ') : null);
   }
 
   function markSeen(check) {
@@ -293,7 +390,10 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     return {
       name: projectName,
       savedAt: new Date().toISOString(),
-      settings: { objective, deadlineHours, budget, maxTeamSize, projectName, projectGoal },
+      settings: {
+        objective, deadlineHours, budget, maxTeamSize, projectName, projectGoal,
+        projectWeeks, outsideRate,
+      },
       roster: { source: rs.source, filename: rs.filename, count: rs.employee_count },
       tasks,
       result,
@@ -328,6 +428,8 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     setDeadlineHours(st.deadlineHours ?? '');
     setBudget(st.budget ?? '');
     setMaxTeamSize(st.maxTeamSize ?? 5);
+    setProjectWeeks(st.projectWeeks ?? '');
+    setOutsideRate(st.outsideRate ?? '');
     setProjectName(st.projectName || run.name);
     setProjectGoal(st.projectGoal || '');
     setTasks(run.tasks || []);
@@ -362,12 +464,21 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     setMc(null);
   }
 
-  async function runProjectSimulation(answers = profAnswers) {
+  // `overrides` carries values set in this same click (state updates land
+  // after this call starts).
+  async function runProjectSimulation(answers = profAnswers, overrides = {}) {
+    const taskList = overrides.taskList || tasks;
+    const rate = overrides.rate !== undefined ? overrides.rate : outsideRate;
     setBusy(true);
     setError(null);
     setMc(null);
     try {
+      const shared = {
+        project_weeks: projectWeeks ? Number(projectWeeks) : null,
+        outside_help_rate: rate ? Number(rate) : null,
+      };
       const scenario = {
+        ...shared,
         project_name: projectName,
         project_goal: projectGoal,
         deadline_target_hours: deadlineHours ? Number(deadlineHours) : null,
@@ -376,7 +487,7 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         team_constraints: {
           max_humans_per_team: Number(maxTeamSize),
         },
-        tasks,
+        tasks: taskList,
         // The whole active roster is the baseline — the simulation picks the
         // team. AI agents are recommended by the simulation; the user never
         // enters them or says how many they have.
@@ -402,7 +513,8 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         try {
           setMc(
             await api.runUncertainty({
-              tasks,
+              ...shared,
+              tasks: taskList,
               human_names: rec.team_members,
               ai_agent_names: rec.ai_agents,
               iterations: 500,
@@ -470,7 +582,7 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         title="The work"
         hint="Upload a project brief and let AI draft the task list, or edit tasks by hand. Every task stays editable."
       />
-      <UploadBriefPanel onUseTasks={setTasks} rosterReady={rosterSource !== 'none'} />
+      <UploadBriefPanel onUseTasks={useBriefTasks} rosterReady={rosterSource !== 'none'} />
       {tasks.length === 0 && (
         <p className="section-hint">
           No tasks yet — upload a brief above, add tasks below, or{' '}
@@ -495,7 +607,7 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
         title="Your answer"
         hint="Pick what matters most, set your targets, and run."
       />
-      <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+      <div className="checkbox-list" style={{ gridTemplateColumns: '1fr 1fr' }}>
         <label className="field">
           <span>What matters most?</span>
           <select
@@ -530,7 +642,27 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
             onChange={(e) => setBudget(e.target.value)}
           />
         </label>
+        <label className="field">
+          <span>Project length (weeks)</span>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={projectWeeks}
+            placeholder={deadlineHours ? `about ${Math.max(1, Math.round((Number(deadlineHours) / 40) * 10) / 10)} (from deadline)` : '1'}
+            onChange={(e) => setProjectWeeks(e.target.value)}
+          />
+        </label>
       </div>
+      <p className="section-hint" style={{ marginTop: 2 }}>
+        Roster hours are per week: each person’s free hours a week are
+        multiplied by the project length.
+      </p>
+      {briefNote && (
+        <p className="section-hint" style={{ marginTop: 2, color: 'var(--green)' }}>
+          From your brief: {briefNote}
+        </p>
+      )}
 
       {showInnovation && (
         <p className="section-hint" style={{ marginTop: 4 }}>
@@ -579,6 +711,16 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
               onChange={(e) => setMaxTeamSize(e.target.value)}
             />
           </label>
+          <label className="field">
+            <span>Outside help rate ($/hour)</span>
+            <input
+              type="number"
+              min="0"
+              value={outsideRate}
+              placeholder="not set"
+              onChange={(e) => setOutsideRate(e.target.value)}
+            />
+          </label>
         </div>
       )}
 
@@ -593,12 +735,12 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
           className="btn btn-primary"
           style={{ fontSize: 15, padding: '10px 18px' }}
           onClick={() => handleRun(false)}
-          disabled={busy || !!profCheck || tasks.length === 0 || rosterSource === 'none' || employees.length === 0}
+          disabled={busy || !!profCheck || !!skillCheck || tasks.length === 0 || rosterSource === 'none' || employees.length === 0}
           title={rosterSource === 'none' ? 'Upload employee data or choose demo roster first' : undefined}
         >
           {busy ? 'Comparing staffing options…' : 'Run Project Simulation'}
         </button>
-        {seenPairs.size > 0 && !profCheck && (
+        {seenPairs.size > 0 && !profCheck && !skillCheck && (
           <button
             className="btn"
             type="button"
@@ -609,6 +751,16 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
           </button>
         )}
       </div>
+
+      {skillCheck && (
+        <SkillCheck
+          check={skillCheck}
+          rosterSkills={[...new Set(employees.flatMap((e) => e.skills || []))].sort()}
+          outsideRate={outsideRate}
+          onApply={applySkillCheck}
+          onCancel={() => setSkillCheck(null)}
+        />
+      )}
 
       {profCheck && (
         <ProficiencyCheck
@@ -689,6 +841,8 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
           <RecommendationSummary
             recommendation={result.recommendation}
             option={result.options[recommendedKey]}
+            gap={result.staffing_gap}
+            capacityBasis={result.capacity_basis}
             mc={mc}
             showInnovation={showInnovation}
           />

@@ -135,6 +135,10 @@ export async function buildRunPdf(run) {
       ['What matters most', OBJECTIVE_LABELS[settings.objective] || settings.objective || '-'],
       ['Deadline target', settings.deadlineHours ? `${settings.deadlineHours}h` : 'none'],
       ['Budget target', settings.budget ? money(settings.budget) : 'none'],
+      ['Project length', result.capacity_basis
+        ? `${result.capacity_basis.weeks} week(s)` + (result.capacity_basis.source === 'set' ? '' : ' (assumed)')
+        : (settings.projectWeeks ? `${settings.projectWeeks} week(s)` : '-')],
+      ['Outside help rate', settings.outsideRate ? `${money(settings.outsideRate)}/h` : 'not set'],
       ['Max team size', settings.maxTeamSize ?? '-'],
       ['Roster', roster.source === 'uploaded'
         ? `Uploaded: ${roster.filename || 'file'} (${roster.count} people)`
@@ -146,6 +150,15 @@ export async function buildRunPdf(run) {
 
   // ---- Recommendation ----
   heading(`Recommended: ${rec.recommended_label || '-'}`);
+  const gap = result.staffing_gap;
+  if (gap && gap.message) para(`Outside help needed: ${gap.message}`, { bold: true });
+  if (opt.unstaffed_hours > 0) {
+    para(
+      `This team can't do ${opt.unstaffed_hours}h of the work; the cost and hours ` +
+        'below leave it out and are incomplete.',
+      { bold: true }
+    );
+  }
   para(
     `${money(opt.estimated_cost)} - ${hours(opt.estimated_duration)} - ` +
       `${opt.required_skill_coverage_score ?? '-'}% required-skill coverage - risk ${opt.risk_score ?? '-'}` +
@@ -158,7 +171,9 @@ export async function buildRunPdf(run) {
     `Team: ${(opt.team_members || []).join(', ') || '-'}` +
       ((opt.ai_agents || []).length ? ` + AI: ${opt.ai_agents.join(', ')}` : '')
   );
-  if (mc && mc.duration) {
+  if (mc && mc.unstaffed_tasks && mc.unstaffed_tasks.length) {
+    para('No realistic finish or deadline chance: some tasks have nobody to do them.');
+  } else if (mc && mc.duration) {
     let line = `Realistic finish: ~${hours(mc.duration.p50)} (optimistic ${hours(mc.duration.p10)}, conservative ${hours(mc.duration.p90)}).`;
     if (mc.probability_meets_deadline !== null && mc.probability_meets_deadline !== undefined) {
       line += ` Chance of hitting the deadline: ${pct(mc.probability_meets_deadline)}.`;
@@ -168,6 +183,7 @@ export async function buildRunPdf(run) {
     }
     para(line);
   }
+  if (result.capacity_basis) para(result.capacity_basis.explanation, { size: 8 });
   table(
     ['', ''],
     [
@@ -240,7 +256,7 @@ export async function buildRunPdf(run) {
       const r = routingByTask[t.task] || {};
       return [
         t.task + (t.irreversible ? ' (hard to undo)' : ''),
-        t.required_skill,
+        t.required_skill + (t.matched_from ? ` (matched from "${t.matched_from}")` : ''),
         t.effort_hours,
         t.stage || '-',
         ROUTING_LABELS[r.routing] || r.routing || '-',
