@@ -56,32 +56,105 @@ function extractError(status, body) {
   return `Request failed with status ${status}`;
 }
 
-async function request(path, options = {}) {
-  let res;
-  try {
-    res = await fetch(`${API_BASE}${path}`, options);
-  } catch (networkErr) {
-    throw new Error(
+// ---------------------------------------------------------------------------
+// Sleeping-backend handling. The free hosting plan puts the API to sleep after
+// ~15 idle minutes; the first request then fails or gets a hosting-level 502/
+// 503/504 while it wakes (30-60s). We retry those - and ONLY those - for up to
+// WAKE_LIMIT_MS, telling listeners so the UI can show a "waking up" banner.
+// Real errors from our app (JSON bodies with `detail`, e.g. a 502 when the AI
+// service fails) are never retried, so an AI call is never repeated/billed twice.
+// ---------------------------------------------------------------------------
+const WAKE_LIMIT_MS = 90000;
+const WAKE_DELAYS_MS = [2000, 3000, 5000, 5000, 8000, 10000, 10000, 10000, 15000];
+const isLocal = /127\.0\.0\.1|localhost/.test(API_BASE || '');
+
+const wakeListeners = new Set();
+let wakingCount = 0;
+
+function setWaking(delta) {
+  const before = wakingCount > 0;
+  wakingCount = Math.max(0, wakingCount + delta);
+  const after = wakingCount > 0;
+  if (before !== after) wakeListeners.forEach((fn) => fn(after));
+}
+
+// Subscribe to "server is waking up" changes; returns an unsubscribe function.
+export function onWakeChange(listener) {
+  wakeListeners.add(listener);
+  return () => wakeListeners.delete(listener);
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function unreachableMessage(detail) {
+  if (isLocal) {
+    return (
       `Cannot reach the backend at ${API_BASE}. Is it running ` +
-        `(uvicorn src.api.app:app --reload)? [${networkErr.message}]`
+      `(uvicorn src.api.app:app --reload)? [${detail}]`
     );
   }
+  return (
+    "Couldn't reach the server, even after waiting about a minute for it to " +
+    'wake up. Please try again in a moment.'
+  );
+}
 
-  // Some endpoints (uploads) return JSON; all our endpoints do.
-  let body = null;
-  const text = await res.text();
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = text;
+async function request(path, options = {}) {
+  const started = Date.now();
+  let attempt = 0;
+  let waking = false;
+  try {
+    for (;;) {
+      let res = null;
+      let networkErr = null;
+      try {
+        res = await fetch(`${API_BASE}${path}`, options);
+      } catch (err) {
+        networkErr = err;
+      }
+
+      let body = null;
+      if (res) {
+        const text = await res.text();
+        if (text) {
+          try {
+            body = JSON.parse(text);
+          } catch {
+            body = text;
+          }
+        }
+      }
+
+      // Hosting-level "not available" (non-JSON 502/503/504) or no connection
+      // at all = the server is asleep or restarting. Our own API errors always
+      // come back as JSON and fall through to normal handling below.
+      const hostUnavailable =
+        res && [502, 503, 504].includes(res.status) &&
+        !(body && typeof body === 'object');
+      if ((networkErr || hostUnavailable) && !isLocal) {
+        const delay = WAKE_DELAYS_MS[Math.min(attempt, WAKE_DELAYS_MS.length - 1)];
+        if (Date.now() - started + delay <= WAKE_LIMIT_MS) {
+          if (!waking) {
+            waking = true;
+            setWaking(+1);
+          }
+          attempt += 1;
+          await sleep(delay);
+          continue;
+        }
+        throw new Error(unreachableMessage(networkErr ? networkErr.message : `status ${res.status}`));
+      }
+      if (networkErr) {
+        throw new Error(unreachableMessage(networkErr.message));
+      }
+      if (!res.ok) {
+        throw new Error(extractError(res.status, body));
+      }
+      return body;
     }
+  } finally {
+    if (waking) setWaking(-1);
   }
-
-  if (!res.ok) {
-    throw new Error(extractError(res.status, body));
-  }
-  return body;
 }
 
 function jsonPost(path, payload) {
