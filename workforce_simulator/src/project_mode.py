@@ -47,8 +47,8 @@ OBJECTIVES = {
 
 # Maps each decision option to a human-friendly label.
 OPTION_LABELS = {
-    "current_team": "Current Team",
-    "ai_assisted_current_team": "AI-Assisted Current Team",
+    "current_team": "Roster Team (No AI)",
+    "ai_assisted_current_team": "Roster Team + AI",
     "recommended_balanced_team": "Recommended Balanced Team",
     "fastest_valid_team": "Fastest Valid Team",
     "lowest_cost_valid_team": "Lowest-Cost Valid Team",
@@ -250,17 +250,28 @@ _TIE_PRIORITY = {
 }
 
 
+def _people_count(result: SimulationResult) -> int:
+    """Roster people on the team (outside-help placeholders don't count)."""
+    return sum(1 for w in result.team.humans if not outside_help.is_outside(w))
+
+
 def choose_recommendation(
-    options: Dict[str, SimulationResult], objective: str
+    options: Dict[str, SimulationResult], objective: str,
+    max_people: Optional[int] = None,
 ) -> str:
     """Pick the recommended option key for the given objective.
 
-    Only valid (fully-staffed) options are eligible. If none are valid, the
-    option with the highest required coverage is returned as the least-bad
-    choice.
+    Only valid (fully-staffed) options are eligible, and - when
+    ``max_people`` is given - only those within the max team size (the
+    roster-based options can be bigger). If none are valid, the option with
+    the highest required coverage is returned as the least-bad choice.
     """
     key_fn, _ = _objective_key(objective)
     valid_keys = [k for k, r in options.items() if _is_valid(r)]
+    if max_people:
+        within = [k for k in valid_keys if _people_count(options[k]) <= max_people]
+        if within:
+            valid_keys = within
     if not valid_keys:
         # Fallback: least-bad by required coverage, then total score.
         return max(
@@ -549,6 +560,29 @@ def _comparison_row(key: str, result: SimulationResult, burden: dict) -> dict:
     }
 
 
+def _without_idle(
+    result: SimulationResult, tasks: List[Task], require_full: bool, calibration
+) -> Tuple[SimulationResult, List[str]]:
+    """Drop roster people who get no work, and re-simulate the rest.
+
+    The roster-based options start from everyone on the roster; listing
+    people who'd do nothing makes the team look far bigger than the work
+    needs (and idle people distort workload balance). Returns the trimmed
+    result and the names removed.
+    """
+    idle = [
+        w.name for w in result.team.humans
+        if result.member_hours.get(w.name, 0.0) <= 0.0
+    ]
+    if not idle or len(idle) == len(result.team.humans):
+        return result, []
+    working = [w for w in result.team.humans if w.name not in idle]
+    trimmed = simulate_team(
+        Team(working, list(result.team.ai_agents)), tasks, require_full, calibration
+    )
+    return trimmed, idle
+
+
 # ---------------------------------------------------------------------------
 # Top-level orchestration
 # ---------------------------------------------------------------------------
@@ -647,6 +681,14 @@ def run_project_simulation(
     )
     assisted_res = simulate_team(
         Team(current_humans, ai_added), engine_tasks, require_full, calibration
+    )
+
+    # The roster options keep only the people who'd actually get work.
+    current_res, current_idle = _without_idle(
+        current_res, engine_tasks, require_full, calibration
+    )
+    assisted_res, assisted_idle = _without_idle(
+        assisted_res, engine_tasks, require_full, calibration
     )
 
     # 3. Whole population of valid team combinations.
@@ -771,7 +813,7 @@ def run_project_simulation(
             options[k], routing_by_task, burdens[k]
         )
 
-    rec_key = choose_recommendation(options, objective)
+    rec_key = choose_recommendation(options, objective, cfg.max_humans_per_team)
     recommendation = build_recommendation(
         rec_key, options, objective, ai_added, ai_notes,
         request.get("deadline_target_hours"), request.get("budget_target"),
@@ -824,6 +866,13 @@ def run_project_simulation(
             burdens["most_innovative_valid_team"]
         ),
     }
+
+    for key, idle in (("current_team", current_idle),
+                      ("ai_assisted_current_team", assisted_idle)):
+        option_payload[key]["idle_roster_members"] = idle
+        option_payload[key]["over_max_team_size"] = (
+            _people_count(options[key]) > cfg.max_humans_per_team
+        )
 
     comparison_table = [
         _comparison_row(k, options[k], burdens[k]) for k in OPTION_LABELS
