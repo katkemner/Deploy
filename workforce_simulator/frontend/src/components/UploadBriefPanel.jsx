@@ -29,8 +29,8 @@ function toTaskInput(d) {
     is_required: true,
     description: d.description || null,
     expected_output: d.expected_output || null,
-  stage: d.stage || null,
-  irreversible: !!d.irreversible,
+    stage: d.stage || null,
+    irreversible: !!d.irreversible,
   };
 }
 
@@ -81,7 +81,7 @@ export default function UploadBriefPanel({ onUseTasks, rosterReady = true }) {
 
   function handleUse() {
     if (!result || !result.draft_tasks) return;
-    onUseTasks(result.draft_tasks.map(toTaskInput));
+    onUseTasks(result.draft_tasks.map(toTaskInput), result.targets || null);
     reset();
   }
 
@@ -199,10 +199,23 @@ export default function UploadBriefPanel({ onUseTasks, rosterReady = true }) {
               {result.notes}
             </p>
           )}
+          {result.targets &&
+            (result.targets.total_budget || result.targets.labor_budget || result.targets.timeline_weeks) && (
+              <div className="explanation" style={{ borderLeftColor: 'var(--green)' }}>
+                <strong>From the brief:</strong>{' '}
+                {result.targets.total_budget && `Total budget $${Math.round(result.targets.total_budget).toLocaleString('en-US')}. `}
+                {result.targets.labor_budget && `For people: $${Math.round(result.targets.labor_budget).toLocaleString('en-US')}. `}
+                {result.targets.budget_notes && `${result.targets.budget_notes} `}
+                {result.targets.timeline_weeks && `Timeline: ${Math.round(result.targets.timeline_weeks * 10) / 10} weeks. `}
+                <span className="muted">“Use these tasks” also fills in your budget and project length — you can change them.</span>
+              </div>
+            )}
           {result.unmatched_skills && result.unmatched_skills.length > 0 && (
             <div className="msg msg-error">
-              Some skills aren’t in your team’s skill list and need review:{' '}
-              {result.unmatched_skills.join(', ')}.
+              Some skills aren’t in your team’s skill list:{' '}
+              {result.unmatched_skills.join(', ')}. When you run, a quick skill
+              check will help you match them to your roster or mark them as
+              outside help.
             </div>
           )}
 

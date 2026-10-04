@@ -103,7 +103,7 @@ export default function EmployeeSeedUpload({ status, onActivated }) {
         <code>name</code> or <code>Employee</code>) and a <strong>skills</strong>{' '}
         column. Common column names are recognized automatically (e.g.{' '}
         <code>Hourly Rate</code> → cost). Anything missing — role, hours
-        available, current workload, cost, quality — is defaulted or generated,
+        available per week, current weekly workload, cost, quality — is defaulted or generated,
         and the validation report tells you exactly what was assumed.
       </p>
       <p className="section-hint">
@@ -156,7 +156,7 @@ export default function EmployeeSeedUpload({ status, onActivated }) {
             <thead>
               <tr>
                 <th>ID</th><th>Name</th><th>Role</th><th>Dept</th><th>Skills</th>
-                <th>Capacity</th><th>Workload</th><th>Cost</th><th>Quality</th>
+                <th>Capacity /wk</th><th>Workload /wk</th><th>Cost</th><th>Quality</th>
               </tr>
             </thead>
             <tbody>

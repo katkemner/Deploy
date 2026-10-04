@@ -42,7 +42,10 @@ def _candidate_score(worker, task: Task, remaining_hours: float) -> float:
     team instead of piling everything on the single "best" person.
     """
     quality = worker.quality_score / 10.0                 # 0..1
-    cost_efficiency = min(1.0, 70.0 / worker.cost_rate)   # 0..1
+    # A zero rate (outside help with no rate given) counts as cheapest.
+    cost_efficiency = (
+        min(1.0, 70.0 / worker.cost_rate) if worker.cost_rate > 0 else 1.0
+    )                                                     # 0..1
     speed = min(1.0, worker.speed_multiplier / 1.5)       # 0..1
     needed = worker.effective_hours_for(task.effort_hours)
     if needed <= 0:

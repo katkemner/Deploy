@@ -255,6 +255,9 @@ class ProjectTaskInput(BaseModel):
     description: Optional[str] = None
     expected_output: Optional[str] = None
     task_type: Optional[str] = None
+    # The task's original skill wording when the user accepted a match to a
+    # roster skill in the pre-run skill check (display only).
+    matched_from: Optional[str] = None
     required_skills: Optional[List[str]] = None
 
 
@@ -284,6 +287,12 @@ class ProficiencyCheckRequest(BaseModel):
     """Body for ``POST /proficiency/check``: the project's tasks."""
 
     tasks: List[ProficiencyCheckTask]
+
+
+class SkillMapRequest(BaseModel):
+    """Body for ``POST /skills/map``: task skills to match to the roster."""
+
+    skills: List[str]
 
 
 class ProficiencySuggestRequest(BaseModel):
@@ -346,6 +355,9 @@ class UncertaintyRequest(BaseModel):
     seed: int = 42
     deadline_target_hours: Optional[float] = None
     budget_target: Optional[float] = None
+    # Same meaning as on ProjectScenarioRequest.
+    project_weeks: Optional[float] = Field(default=None, gt=0)
+    outside_help_rate: Optional[float] = Field(default=None, ge=0)
     default_low_factor: float = Field(default=0.8, gt=0)
     default_high_factor: float = Field(default=1.5, gt=0)
 
@@ -439,6 +451,13 @@ class ProjectScenarioRequest(BaseModel):
     tasks: List[ProjectTaskInput]
     current_team_human_names: List[str] = Field(default_factory=list)
     current_team_ai_agent_names: List[str] = Field(default_factory=list)
+    # Project length in weeks. Roster capacity/workload are hours PER WEEK and
+    # are multiplied by this. When omitted: deadline hours / 40, else 1 week.
+    project_weeks: Optional[float] = Field(default=None, gt=0)
+    # Hourly rate for outside help covering skills nobody on the roster has.
+    # When omitted that work is still scheduled but its cost is not included
+    # (and the response says so).
+    outside_help_rate: Optional[float] = Field(default=None, ge=0)
     # One-time answers from the pre-run strength check. Used only to produce
     # advice for this run; never stored.
     proficiency_answers: List[ProficiencyAnswer] = Field(default_factory=list)

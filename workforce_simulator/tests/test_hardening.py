@@ -33,6 +33,9 @@ def _sample_project(**overrides):
         "project_goal": "Ship the MVP",
         "deadline_target_hours": 90,
         "budget_target": 15000,
+        # Pinned to 1 week so these stability checks keep the original
+        # capacity basis (roster hours are per week; see test_brief_fixes).
+        "project_weeks": 1,
         "optimization_objective": "balanced",
         "tasks": tasks,
         "current_team_human_names": ["Sarah", "Maya", "Priya", "Alex", "Casey"],

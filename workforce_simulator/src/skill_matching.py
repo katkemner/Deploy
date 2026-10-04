@@ -10,13 +10,15 @@ Matching rules, tried in order (first hit wins):
 
 1. **exact**  - the whole normalized skill equals a canonical key.
 2. **token**  - a word of the skill equals a canonical key ("customer research"
-   -> "research"). The leftmost matching word wins.
+   -> "research"). The rightmost matching word wins: in English the last word
+   names the kind of work ("Campaign Strategy" is strategy work, "Sales
+   Analytics" is analytics work), earlier words only qualify it.
 3. **stem**   - a word and a key share a stem after stripping common suffixes
    ("Copywriting" -> "writing", "prototyping" -> "prototype"). Substring stems
    only count when the key's stem is at least 4 characters, so short keys like
    "qa", "ux", or "api" can never match by accident.
 
-Everything is deterministic: ties prefer the leftmost word, then the longest
+Everything is deterministic: ties prefer the rightmost word, then the longest
 key, then alphabetical order.
 """
 
@@ -72,14 +74,14 @@ def match(skill: str, keys: Iterable[str]) -> Tuple[Optional[str], str]:
 
     words = _words(skill)
 
-    # Leftmost word that IS a canonical key.
-    for w in words:
+    # Rightmost word that IS a canonical key (the head noun names the work).
+    for w in reversed(words):
         if w in key_list:
             return w, "token"
 
-    # Leftmost word that stem-matches a key; among several keys prefer the
+    # Rightmost word that stem-matches a key; among several keys prefer the
     # longest (most specific), then alphabetical for determinism.
-    for w in words:
+    for w in reversed(words):
         candidates = [k for k in key_list if _stem_match(w, k)]
         if candidates:
             candidates.sort(key=lambda k: (-len(k), k))

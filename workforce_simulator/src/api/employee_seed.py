@@ -355,12 +355,12 @@ def parse_seed(content: bytes, filename: str) -> Tuple[List[Worker], dict, List[
     if capacity_defaulted:
         defaulted_fields.append(
             f"capacity_hours (no value found — assumed {DEFAULT_CAPACITY_HOURS:g}h "
-            f"available for {capacity_defaulted} employee(s); edit your file if that's wrong)"
+            f"a week available for {capacity_defaulted} employee(s); edit your file if that's wrong)"
         )
     if workload_defaulted:
         defaulted_fields.append(
             f"workload_hours (no value found — assumed {DEFAULT_WORKLOAD_HOURS:g}h "
-            f"already committed for {workload_defaulted} employee(s))"
+            f"a week already committed for {workload_defaulted} employee(s))"
         )
     if cost_defaulted:
         defaulted_fields.append(f"cost_rate (defaulted to {DEFAULT_COST_RATE:g} for {cost_defaulted} employee(s))")

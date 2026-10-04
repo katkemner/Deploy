@@ -37,14 +37,16 @@ def test_exact_match_unchanged():
     assert skill_matching.match("  QA ", KEYS) == ("qa", "exact")
 
 
-def test_token_match_leftmost_word():
+def test_token_match_rightmost_word():
+    # The last word names the kind of work; earlier words only qualify it.
     assert skill_matching.match("customer research", KEYS) == ("research", "token")
-    assert skill_matching.match("Brand strategy", KEYS) == ("brand", "token")
-    assert skill_matching.match("UX research", KEYS) == ("ux", "token")
-    assert skill_matching.match("Data analysis", KEYS) == ("data", "token")
+    assert skill_matching.match("Brand strategy", KEYS) == ("strategy", "token")
+    assert skill_matching.match("UX research", KEYS) == ("research", "token")
+    assert skill_matching.match("Data analysis", KEYS) == ("analysis", "token")
     assert skill_matching.match("team planning", KEYS) == ("planning", "token")
-    # Business families: more specific roster wording now has its own key.
-    assert skill_matching.match("campaign planning", KEYS) == ("campaign", "token")
+    assert skill_matching.match("Campaign Strategy", KEYS) == ("strategy", "token")
+    assert skill_matching.match("Sales Analytics", KEYS) == ("analytics", "token")
+    # Falls back to an earlier word when the last one isn't a key.
     assert skill_matching.match("social media", KEYS) == ("social", "token")
     assert skill_matching.match("Program management", KEYS) == ("program", "token")
 
@@ -105,7 +107,7 @@ def test_truly_unknown_skill_still_escalates():
 # ---------------------------------------------------------------------------
 
 def test_innovation_credits_roster_skill_names():
-    caps_demo, _, _ = innovation._team_capabilities({"ux", "prototype", "writing"})
+    caps_demo, _, _ = innovation._team_capabilities({"research", "prototype", "writing"})
     caps_roster, _, _ = innovation._team_capabilities(
         {"ux research", "prototyping", "copywriting"}
     )
@@ -123,7 +125,9 @@ def _human(name, skills):
 
 
 def test_no_valid_team_fallback_respects_cap_and_says_so():
-    # Nobody (human or AI) covers "quantum sculpting" -> no valid team exists.
+    # Each skill exists on the roster, but no team within the size cap (2)
+    # has all three -> no valid team. (Skills NOBODY has become outside help
+    # instead; see test_brief_fixes.)
     employees = [
         _human("A", ["Copywriting"]), _human("B", ["customer research"]),
         _human("C", ["Brand strategy"]), _human("D", ["prototyping"]),
@@ -131,7 +135,9 @@ def test_no_valid_team_fallback_respects_cap_and_says_so():
     tasks = [
         {"task": "Write", "required_skill": "Copywriting", "effort_hours": 10,
          "priority": 1, "dependencies": [], "is_required": True},
-        {"task": "Impossible", "required_skill": "quantum sculpting",
+        {"task": "Interview", "required_skill": "customer research",
+         "effort_hours": 10, "priority": 1, "dependencies": [], "is_required": True},
+        {"task": "Position", "required_skill": "Brand strategy",
          "effort_hours": 10, "priority": 1, "dependencies": [], "is_required": True},
     ]
     cfg = SimConfig()
@@ -150,6 +156,8 @@ def test_no_valid_team_fallback_respects_cap_and_says_so():
         assert not opt["is_valid_team"]
         # The fallback must respect the team-size cap (was: whole roster).
         assert len(opt["team_members"]) <= 2, (key, opt["team_members"])
+        # Its numbers leave work out, and the payload says how much.
+        assert opt["unstaffed_hours"] == 10
     rec = result["recommendation"]
     if not result["options"][rec["recommended_option"]]["is_valid_team"]:
         assert "valid options" not in rec["why"]

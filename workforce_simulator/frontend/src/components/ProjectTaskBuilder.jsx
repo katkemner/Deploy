@@ -41,6 +41,11 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
     if (!draft.task.trim() || !draft.required_skill.trim()) return;
     const cleaned = {
       ...draft,
+      // A hand-edited skill is no longer the accepted match.
+      matched_from:
+        editIndex !== null && tasks[editIndex].required_skill !== draft.required_skill.trim()
+          ? null
+          : draft.matched_from || null,
       task: draft.task.trim(),
       required_skill: draft.required_skill.trim(),
       expected_output: (draft.expected_output || '').trim(),
@@ -99,7 +104,14 @@ export default function ProjectTaskBuilder({ tasks, onChange }) {
             {tasks.map((t, i) => (
               <tr key={`${t.task}-${i}`}>
                 <td>{t.task}</td>
-                <td>{t.required_skill}</td>
+                <td>
+                  {t.required_skill}
+                  {t.matched_from && (
+                    <div className="muted" style={{ fontSize: 11 }}>
+                      matched from “{t.matched_from}”
+                    </div>
+                  )}
+                </td>
                 <td>{t.effort_hours}h</td>
                 <td>{t.priority}</td>
                 <td>{t.stage || '—'}</td>

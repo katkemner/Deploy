@@ -132,10 +132,41 @@ class DraftTask(BaseModel):
     )
 
 
+class BriefTargets(BaseModel):
+    """Budget and timeline figures the brief states (never invented)."""
+
+    total_budget: Optional[float] = Field(
+        default=None,
+        description="Total project budget in the brief's currency, as a plain "
+        "number. null if the brief gives none.",
+    )
+    labor_budget: Optional[float] = Field(
+        default=None,
+        description="The part of the budget for people's time (staffing, "
+        "labor, team, contractors/freelancers), when the brief splits it out. "
+        "null if not stated separately.",
+    )
+    budget_notes: Optional[str] = Field(
+        default=None,
+        description="One sentence on how the brief splits the budget (e.g. "
+        "'$50,000 for ad spend, $25,000 for staffing').",
+    )
+    timeline_weeks: Optional[float] = Field(
+        default=None,
+        description="Project length in weeks as stated in the brief (convert "
+        "months x 4.3, days / 5 working days). null if no timeline is given.",
+    )
+    timeline_notes: Optional[str] = Field(
+        default=None,
+        description="One sentence quoting the brief's timeline or deadline.",
+    )
+
+
 class BriefParseResult(BaseModel):
     """The full result returned by the parser / endpoint."""
 
     draft_tasks: List[DraftTask] = Field(default_factory=list)
+    targets: Optional[BriefTargets] = None
     available_skills: List[str] = Field(default_factory=list)
     unmatched_skills: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
@@ -145,6 +176,7 @@ class BriefParseResult(BaseModel):
 # fills in available_skills / unmatched_skills deterministically.
 class _ModelOutput(BaseModel):
     draft_tasks: List[DraftTask] = Field(default_factory=list)
+    targets: Optional[BriefTargets] = None
     notes: Optional[str] = None
 
 
@@ -179,6 +211,11 @@ _SYSTEM_PROMPT = (
     "- Tag every task's `stage`. Choice-stage tasks (evaluating, selecting, "
     "approving, committing) are decision work: keep them small and separate "
     "rather than folded into production tasks.\n"
+    "- Fill `targets` with the budget and timeline ONLY as the brief states "
+    "them; use null for anything not stated. When the budget is split (e.g. "
+    "ad/media spend vs staffing), put only the people/labor part in "
+    "`labor_budget` - money spent on ads, media, tools or materials is not "
+    "labor.\n"
     "- If the brief is too vague to produce tasks, return an empty list and "
     "explain why in `notes`."
 )
@@ -264,6 +301,20 @@ def _reconcile_skills(
                 else reason
             )
     return sorted(unmatched)
+
+
+def _clean_targets(targets: Optional[BriefTargets]) -> Optional[BriefTargets]:
+    """Drop impossible figures (non-positive, or labor above the total)."""
+    if targets is None:
+        return None
+    for name in ("total_budget", "labor_budget", "timeline_weeks"):
+        v = getattr(targets, name)
+        if v is not None and v <= 0:
+            setattr(targets, name, None)
+    if (targets.labor_budget and targets.total_budget
+            and targets.labor_budget > targets.total_budget):
+        targets.labor_budget = None
+    return targets
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +408,7 @@ def parse_brief(
 
     return BriefParseResult(
         draft_tasks=tasks,
+        targets=_clean_targets(model_output.targets),
         available_skills=available_skills,
         unmatched_skills=unmatched,
         notes=model_output.notes,
