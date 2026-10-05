@@ -51,6 +51,8 @@ const OPTION_DESCRIPTIONS = {
     'The valid team with the strongest cross-functional mix for exploring, prototyping, validating, and launching new ideas — while still covering the project’s required skills.',
 };
 
+const fitKey = (task, skill) => `${String(task).toLowerCase()}||${String(skill).toLowerCase()}`;
+
 const ROSTER_CLEARED =
   'Your roster was cleared because the server restarted (this happens on every ' +
   'deploy, because rosters are never saved). Upload it again in step 1 — your ' +
@@ -205,6 +207,8 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
   // `confirmedOutside` = skills the user already said need outside help.
   const [skillCheck, setSkillCheck] = useState(null);
   const [confirmedOutside, setConfirmedOutside] = useState(() => new Set());
+  // Task|skill labels the user already reviewed in the stretch check.
+  const [confirmedFits, setConfirmedFits] = useState(() => new Set());
 
   const [tasks, setTasks] = useState([]);
 
@@ -256,6 +260,7 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     setProfCheck(null);
     setSkillCheck(null);
     setConfirmedOutside(new Set());
+    setConfirmedFits(new Set());
   }
 
   // The roster lives only in server memory, so a deploy/restart (or another
@@ -287,11 +292,20 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     }
     try {
       const skills = [...new Set(tasks.map((t) => t.required_skill))];
-      const m = await api.mapSkills(skills);
+      // Only labels not already reviewed go to the stretch check.
+      const toReview = tasks.filter((t) => !confirmedFits.has(fitKey(t.task, t.required_skill)));
+      const m = await api.mapSkills(skills, toReview);
       const pending = m.items.filter((i) => !confirmedOutside.has(i.skill.toLowerCase()));
-      if (pending.length > 0) {
-        setSkillCheck({ ...m, items: pending, forceCheck });
+      const stretches = m.stretches || [];
+      if (pending.length > 0 || stretches.length > 0) {
+        setSkillCheck({ ...m, items: pending, stretches, forceCheck });
         return;
+      }
+      // Nothing to ask: remember these labels were reviewed.
+      if (m.stretch_check === 'ai' && toReview.length) {
+        const next = new Set(confirmedFits);
+        toReview.forEach((t) => next.add(fitKey(t.task, t.required_skill)));
+        setConfirmedFits(next);
       }
     } catch {
       // The skill check is a helper; if it fails, carry on - unmatched work
@@ -300,20 +314,48 @@ export default function ProjectMode({ employees, sampleTasks, onEmployeesChange 
     continueAfterSkillCheck(tasks, forceCheck, {});
   }
 
-  function applySkillCheck(choices, rate) {
+  function applySkillCheck(choices, rate, taskChoices = {}) {
     const byLower = {};
     Object.entries(choices).forEach(([skill, choice]) => {
       byLower[skill.toLowerCase()] = choice;
     });
-    const next = tasks.map((t) => {
-      const choice = byLower[String(t.required_skill).trim().toLowerCase()];
-      if (!choice || choice === OUTSIDE) return t;
-      return { ...t, required_skill: choice, matched_from: t.matched_from || t.required_skill };
+    const stretchByTask = {};
+    (skillCheck.stretches || []).forEach((st) => {
+      stretchByTask[st.task] = st;
     });
     const outside = new Set(confirmedOutside);
+    const fits = new Set(confirmedFits);
+    const next = tasks.map((t) => {
+      // Stretched label: keep it, switch to another roster skill, or plan
+      // the task as outside help under the skill it really needs.
+      const st = stretchByTask[t.task];
+      if (st && taskChoices[t.task] !== undefined) {
+        const c = taskChoices[t.task];
+        let updated = t;
+        if (c === OUTSIDE) {
+          const needed = st.needed_skill || `${t.task} specialist`;
+          outside.add(needed.toLowerCase());
+          updated = { ...t, required_skill: needed, matched_from: t.matched_from || t.required_skill };
+        } else if (c !== t.required_skill) {
+          updated = { ...t, required_skill: c, matched_from: t.matched_from || t.required_skill };
+        }
+        fits.add(fitKey(updated.task, updated.required_skill));
+        return updated;
+      }
+      const choice = byLower[String(t.required_skill).trim().toLowerCase()];
+      if (!choice || choice === OUTSIDE) return t;
+      const updated = { ...t, required_skill: choice, matched_from: t.matched_from || t.required_skill };
+      fits.add(fitKey(updated.task, updated.required_skill));
+      return updated;
+    });
     Object.entries(byLower).forEach(([skill, choice]) => {
       if (choice === OUTSIDE) outside.add(skill);
     });
+    // Every other label was reviewed in this check too.
+    if (skillCheck.stretch_check === 'ai') {
+      next.forEach((t) => fits.add(fitKey(t.task, t.required_skill)));
+    }
+    setConfirmedFits(fits);
     const forceCheck = skillCheck && skillCheck.forceCheck;
     setConfirmedOutside(outside);
     setOutsideRate(rate);

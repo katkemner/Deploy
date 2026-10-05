@@ -375,12 +375,14 @@ def proficiency_suggest_route(request: ProficiencySuggestRequest) -> dict:
 def skills_map(request: SkillMapRequest) -> dict:
     """Suggest a roster skill for each task skill nobody on the roster has.
 
-    Matches by meaning with AI when configured, else by shared words. Only
-    the skill names are sent to the AI - no people, notes or brief text.
+    Matches by meaning with AI when configured, else by shared words. With
+    AI it also flags tasks whose roster-skill label is a stretch. Only skill
+    and task names are sent to the AI - no people, notes or brief text.
     Suggestions only: the user confirms each match before running.
     """
     return skill_mapper.map_skills(
-        request.skills, _people_skills(), _available_skills()
+        request.skills, _people_skills(), _available_skills(),
+        tasks=[t.model_dump() for t in request.tasks],
     )
 
 

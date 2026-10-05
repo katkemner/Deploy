@@ -15,9 +15,21 @@ export default function SkillCheck({ check, rosterSkills, outsideRate, onApply, 
     });
     return c;
   });
+  // Stretched labels: default to the AI's view (a better roster skill, or
+  // outside help); the user can keep the original label.
+  const stretches = check.stretches || [];
+  const [taskChoices, setTaskChoices] = useState(() => {
+    const c = {};
+    stretches.forEach((st) => {
+      c[st.task] = st.suggestion || OUTSIDE;
+    });
+    return c;
+  });
   const [rate, setRate] = useState(outsideRate || '');
 
-  const anyOutside = Object.values(choices).some((v) => v === OUTSIDE);
+  const anyOutside =
+    Object.values(choices).some((v) => v === OUTSIDE) ||
+    Object.values(taskChoices).some((v) => v === OUTSIDE);
   const methodNote =
     check.method === 'ai'
       ? 'Suggestions are matched by meaning with AI (only the skill names are sent).'
@@ -28,6 +40,8 @@ export default function SkillCheck({ check, rosterSkills, outsideRate, onApply, 
       <h3 style={{ fontSize: 16, marginTop: 0 }}>
         Skill check: match your tasks to your roster
       </h3>
+      {check.items.length > 0 && (
+      <>
       <p className="section-hint">
         These tasks name skills nobody on your roster lists, so nobody could
         be staffed on them. Pick the roster skill that covers the work, or
@@ -77,6 +91,68 @@ export default function SkillCheck({ check, rosterSkills, outsideRate, onApply, 
           </tbody>
         </table>
       </div>
+      </>
+      )}
+
+      {stretches.length > 0 && (
+        <>
+          <p className="section-hint" style={{ marginTop: 10 }}>
+            <strong>These tasks may be labelled with the wrong skill.</strong>{' '}
+            The skill on them is on your roster, but someone with it probably
+            couldn’t do this work well — so your team may need outside help.
+            Keep the label if you know better.
+          </p>
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Task</th>
+                  <th>Who should do it</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {stretches.map((st) => {
+                  const others = rosterSkills.filter((s) => s !== st.required_skill);
+                  return (
+                    <tr key={st.task}>
+                      <td style={{ whiteSpace: 'normal', fontWeight: 600 }}>
+                        {st.task}
+                        <div className="muted" style={{ fontSize: 11, fontWeight: 400 }}>
+                          labelled “{st.required_skill}”
+                          {st.needed_skill && <> · really needs “{st.needed_skill}”</>}
+                        </div>
+                      </td>
+                      <td>
+                        <select
+                          value={taskChoices[st.task]}
+                          onChange={(e) => setTaskChoices({ ...taskChoices, [st.task]: e.target.value })}
+                          style={{ padding: 5, borderRadius: 6, border: '1px solid var(--border)', maxWidth: 220 }}
+                        >
+                          <option value={OUTSIDE}>
+                            Outside help{st.needed_skill ? ` (${st.needed_skill})` : ''}
+                            {!st.suggestion ? ' (suggested)' : ''}
+                          </option>
+                          <option value={st.required_skill}>Keep “{st.required_skill}”</option>
+                          {others.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                              {s === st.suggestion ? ' (suggested)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="muted" style={{ fontSize: 12, whiteSpace: 'normal', maxWidth: 300 }}>
+                        {st.reason || ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {anyOutside && (
         <label className="field" style={{ maxWidth: 320, marginTop: 8 }}>
@@ -96,7 +172,7 @@ export default function SkillCheck({ check, rosterSkills, outsideRate, onApply, 
       )}
 
       <div className="card-actions">
-        <button className="btn btn-primary" type="button" onClick={() => onApply(choices, rate)}>
+        <button className="btn btn-primary" type="button" onClick={() => onApply(choices, rate, taskChoices)}>
           Apply and continue
         </button>
         <button className="btn" type="button" onClick={onCancel}>

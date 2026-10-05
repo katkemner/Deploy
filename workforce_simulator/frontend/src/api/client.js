@@ -199,5 +199,10 @@ export const api = {
   proficiencySuggest: (pairs) => jsonPost('/proficiency/suggest', { pairs }),
   // Pre-run skill check: suggest a roster skill for each task skill nobody
   // has (by meaning with AI when configured, else by shared words).
-  mapSkills: (skills) => jsonPost('/skills/map', { skills }),
+  // With AI it also flags tasks whose roster-skill label is a stretch.
+  mapSkills: (skills, tasks = []) =>
+    jsonPost('/skills/map', {
+      skills,
+      tasks: tasks.map((t) => ({ task: t.task, required_skill: t.required_skill })),
+    }),
 };
