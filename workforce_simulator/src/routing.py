@@ -664,7 +664,8 @@ def estimate_ai_time_saved(decision: str, effort: float) -> float:
 # ---------------------------------------------------------------------------
 
 def route_task(task, binding=None, use_priors=False, calibration=None,
-               workbank_binding=None, use_workbank=False) -> dict:
+               workbank_binding=None, use_workbank=False,
+               feeds_decision: Optional[str] = None) -> dict:
     """Produce the full routing record for one task, including provenance.
 
     When ``use_priors`` is true and ``binding`` is a usable matched prior, the
@@ -681,6 +682,10 @@ def route_task(task, binding=None, use_priors=False, calibration=None,
     estimated review hours (``review_time_multiplier``) and expected rework
     hours (``rework_multiplier``), and the net AI-time-saved is recomputed from
     those scaled values. With ``calibration is None`` the record is unchanged.
+
+    ``feeds_decision`` (optional) names a decision (choice-stage) or
+    hard-to-undo task that directly depends on this one. Such a task is never
+    AI_ONLY: a person checks what goes into a decision before it is made.
     """
     scores, has_profile, sources = derive_scores(
         task, binding, use_priors, workbank_binding, use_workbank)
@@ -691,6 +696,13 @@ def route_task(task, binding=None, use_priors=False, calibration=None,
     irreversible = bool(_get_attr(task, "irreversible", False))
     apply_irreversibility_adjustment(irreversible, scores, sources)
     decision, explanation = decide_route(scores, has_profile)
+    if decision == AI_ONLY and feeds_decision:
+        decision = AI_FIRST_HUMAN_REVIEW
+        explanation = (
+            f"AI could do this end to end, but its output feeds "
+            f"'{feeds_decision}', a decision or hard-to-undo step - so a person "
+            "checks it before it's used."
+        )
     effort = float(_get_attr(task, "effort_hours", 0) or 0)
     review = estimate_review_hours(decision, scores or {}, effort)
     rework = estimate_rework_hours(decision, scores or {}, effort)
@@ -826,14 +838,33 @@ def route_tasks(tasks, bindings=None, use_priors=False, calibration=None,
     precedence over public priors. ``calibration`` (optional) scales the
     review/rework estimates per task (see :func:`route_task`).
     """
+    feeds = decision_inputs(tasks)
     records = []
     for t in tasks:
         name = _get_attr(t, "task", "")
         binding = bindings.get(name) if bindings else None
         wb_binding = workbank_bindings.get(name) if workbank_bindings else None
         records.append(route_task(
-            t, binding, use_priors, calibration, wb_binding, use_workbank))
+            t, binding, use_priors, calibration, wb_binding, use_workbank,
+            feeds_decision=feeds.get(name)))
     return records
+
+
+def decision_inputs(tasks) -> Dict[str, str]:
+    """Map each task to the first decision/hard-to-undo task that uses it.
+
+    A task "feeds a decision" when a choice-stage or irreversible task lists
+    it as a direct dependency (e.g. weekly insights -> approve budget
+    changes; final report draft -> present findings).
+    """
+    feeds: Dict[str, str] = {}
+    for t in tasks:
+        stage = normalize_stage(_get_attr(t, "stage", None))
+        if stage != "choice" and not bool(_get_attr(t, "irreversible", False)):
+            continue
+        for dep in _get_attr(t, "dependencies", []) or []:
+            feeds.setdefault(dep, _get_attr(t, "task", ""))
+    return feeds
 
 
 def summarize_routing(records: List[dict]) -> dict:

@@ -289,10 +289,18 @@ class ProficiencyCheckRequest(BaseModel):
     tasks: List[ProficiencyCheckTask]
 
 
+class SkillMapTask(BaseModel):
+    task: str
+    required_skill: str
+
+
 class SkillMapRequest(BaseModel):
-    """Body for ``POST /skills/map``: task skills to match to the roster."""
+    """Body for ``POST /skills/map``: task skills to match to the roster,
+    plus (optional) tasks whose roster-skill labels should be checked for a
+    stretch."""
 
     skills: List[str]
+    tasks: List[SkillMapTask] = Field(default_factory=list)
 
 
 class ProficiencySuggestRequest(BaseModel):

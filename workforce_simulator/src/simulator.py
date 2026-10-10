@@ -109,9 +109,67 @@ def assign_tasks(team: Team, tasks: List[Task]) -> List[Assignment]:
             )
         )
 
+    _rebalance(assignments, members, tasks)
+
     # Restore the original task order for readability.
     by_name = {a.task: a for a in assignments}
     return [by_name[t.task] for t in tasks]
+
+
+def _rebalance(assignments: List[Assignment], members, tasks: List[Task]) -> None:
+    """Move work off overloaded people to teammates with the skill and room.
+
+    The first pass favours the best-scoring person until they are nearly
+    full, which can pile one skill's work on one person while a teammate
+    with the same skill sits idle. While anyone is over their available
+    hours, move one of their tasks (largest first) to the best-scoring
+    teammate who has the skill AND room for the whole task. A move never
+    overloads the receiver, so this always finishes; when no move fits, the
+    overload is real and is reported as before. Mutates ``assignments``.
+    """
+    by_worker = {w.name: w for w in members}
+    task_by_name = {t.task: t for t in tasks}
+    load: Dict[str, float] = {w.name: 0.0 for w in members}
+    for a in assignments:
+        if a.assigned_to is not None:
+            load[a.assigned_to] += a.assigned_hours
+
+    def over(name):
+        return load[name] - by_worker[name].available_hours > 1e-9
+
+    for _ in range(len(assignments) * max(1, len(members))):
+        overloaded = sorted(
+            (n for n in load if over(n)),
+            key=lambda n: (-(load[n] - by_worker[n].available_hours), n),
+        )
+        move = None
+        for name in overloaded:
+            mine = sorted(
+                (a for a in assignments if a.assigned_to == name),
+                key=lambda a: (-a.assigned_hours, a.task),
+            )
+            for a in mine:
+                task = task_by_name[a.task]
+                fits = []
+                for w in members:
+                    if w.name == name or not w.has_skill(a.required_skill):
+                        continue
+                    hours = w.effective_hours_for(a.effort_hours)
+                    room = w.available_hours - load[w.name]
+                    if hours <= room + 1e-9:
+                        fits.append((_candidate_score(w, task, room), w.name, w, hours))
+                if fits:
+                    _, _, w, hours = max(fits, key=lambda f: (f[0], f[1]))
+                    move = (a, w, hours)
+                    break
+            if move:
+                break
+        if not move:
+            return
+        a, w, hours = move
+        load[a.assigned_to] -= a.assigned_hours
+        load[w.name] += hours
+        a.assigned_to, a.assigned_type, a.assigned_hours = w.name, w.type, hours
 
 
 # ---------------------------------------------------------------------------

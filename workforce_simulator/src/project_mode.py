@@ -195,8 +195,8 @@ def _assist_note(agent: Worker, before: SimulationResult, after: SimulationResul
         )
     if after.risk_score < before.risk_score:
         return (
-            f"{agent.name}: reduces risk from {before.risk_score:.0f} "
-            f"to {after.risk_score:.0f}."
+            f"{agent.name}: reduces risk from {before.risk_score:.1f} "
+            f"to {after.risk_score:.1f}."
         )
     return f"{agent.name}: improves the overall outcome."
 
@@ -359,6 +359,12 @@ def _ai_time_verdict(burden: dict) -> str:
         return (
             "This option uses no AI agents, so there is no AI time saving or "
             "review burden to weigh."
+        )
+    if abs(net) < 1:
+        return (
+            f"AI roughly breaks even here: ~{saved:.0f}h saved, but about the "
+            f"same goes to {review:.0f}h review + {rework:.0f}h rework. Its value "
+            "is in drafting speed, not total hours."
         )
     if net > 0:
         return (

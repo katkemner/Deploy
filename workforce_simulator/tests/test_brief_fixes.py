@@ -201,12 +201,12 @@ def test_mapper_word_fallback_without_ai(monkeypatch):
 
 
 def test_mapper_ai_answers_are_kept_inside_the_vocabulary(monkeypatch):
-    def fake(skills, people, ai_only):
+    def fake(skills, people, ai_only, tasks=None):
         return {
             "dashboarding": {"roster_skill": "Data", "reason": "Dashboards are data work."},
             "stakeholder management": {"roster_skill": None, "reason": "Nobody fits."},
-        }
-    monkeypatch.setattr(skill_mapper, "_ai_matches", fake)
+        }, {}
+    monkeypatch.setattr(skill_mapper, "_ai_review", fake)
     out = skill_mapper.map_skills(["Dashboarding", "Stakeholder Management"],
                                   PEOPLE, AVAILABLE)
     assert out["method"] == "ai"
@@ -240,10 +240,135 @@ def test_mapper_drops_invented_skills_from_the_model(monkeypatch):
 def test_mapper_falls_back_to_words_when_ai_fails(monkeypatch):
     def boom(*a):
         raise brief_parser.BriefParserError(502, "down")
-    monkeypatch.setattr(skill_mapper, "_ai_matches", boom)
-    out = skill_mapper.map_skills(["Campaign Strategy"], PEOPLE, AVAILABLE)
+    monkeypatch.setattr(skill_mapper, "_ai_review", boom)
+    out = skill_mapper.map_skills(
+        ["Campaign Strategy"], PEOPLE, AVAILABLE,
+        tasks=[{"task": "Make ads", "required_skill": "Writing"}])
     assert out["method"] == "words"
     assert out["items"][0]["suggestion"] == "Strategy"
+    # No AI = no stretch review, and the response says so.
+    assert out["stretches"] == [] and out["stretch_check"] == "unavailable"
+
+
+# ---------------------------------------------------------------------------
+# Stretched labels (fix: ad creative labelled "Prototype")
+# ---------------------------------------------------------------------------
+
+def _fake_client(monkeypatch, output, seen=None):
+    class FakeResponse:
+        stop_reason = "end_turn"
+        parsed_output = output
+
+    def parse(**kw):
+        if seen is not None:
+            seen.append(kw["messages"][0]["content"])
+        return FakeResponse()
+
+    class FakeClient:
+        def __init__(self):
+            self.messages = SimpleNamespace(parse=parse)
+
+    import anthropic
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+
+
+def test_stretched_label_is_flagged_with_outside_help_default(monkeypatch):
+    seen = []
+    _fake_client(monkeypatch, skill_mapper._ModelOutput(fits=[
+        skill_mapper._Fit(task="Produce ad creative", fit="stretch",
+                          needed_skill="Ad creative production",
+                          reason="Prototype is a software skill."),
+        skill_mapper._Fit(task="Write report", fit="good"),
+        skill_mapper._Fit(task="Not asked about", fit="stretch", needed_skill="X"),
+    ]), seen)
+    out = skill_mapper.map_skills(
+        ["Prototype", "Writing"], PEOPLE + ["Prototype"], AVAILABLE + ["Prototype"],
+        tasks=[{"task": "Produce ad creative", "required_skill": "Prototype"},
+               {"task": "Write report", "required_skill": "Writing"}])
+    assert out["stretch_check"] == "ai"
+    assert out["stretches"] == [{
+        "task": "Produce ad creative", "required_skill": "Prototype",
+        "needed_skill": "Ad creative production", "suggestion": None,
+        "reason": "Prototype is a software skill.",
+    }]
+    # Only task and skill names go to the AI.
+    assert "Produce ad creative | labelled: Prototype" in seen[0]
+
+
+def test_stretch_suggests_a_better_roster_skill_when_one_exists(monkeypatch):
+    _fake_client(monkeypatch, skill_mapper._ModelOutput(fits=[
+        skill_mapper._Fit(task="Set campaign direction", fit="stretch",
+                          needed_skill="strategy"),
+    ]))
+    out = skill_mapper.map_skills(
+        ["Writing"], PEOPLE, AVAILABLE,
+        tasks=[{"task": "Set campaign direction", "required_skill": "Writing"}])
+    assert out["stretches"][0]["suggestion"] == "Strategy"
+
+
+# ---------------------------------------------------------------------------
+# Work moves off overloaded people
+# ---------------------------------------------------------------------------
+
+def test_overloaded_persons_work_moves_to_teammate_with_room():
+    from models import Team
+    from simulator import assign_tasks
+    star = Worker(name="Maya", type=HUMAN, role="r", skills=["Data"],
+                  capacity_hours=40, workload_hours=0, cost_rate=50, quality_score=9)
+    other = _human("Sarah", ["Data"], rate=90)
+    tasks = project_mode.tasks_from_request(
+        [_t(f"Analysis {i}", "Data", 15) for i in range(4)])
+    out = assign_tasks(Team([star, other], []), tasks)
+    load = {}
+    for a in out:
+        load[a.assigned_to] = load.get(a.assigned_to, 0) + a.assigned_hours
+    # 60h of Data work, 40h each: nobody is over capacity any more.
+    assert load["Maya"] <= 40 and load["Sarah"] <= 40
+    assert load["Maya"] + load["Sarah"] == 60
+
+
+def test_overload_stays_when_nobody_has_room():
+    from models import Team
+    from simulator import assign_tasks
+    tasks = project_mode.tasks_from_request([_t(f"T{i}", "Data", 30) for i in range(3)])
+    out = assign_tasks(Team([_human("Ana", ["Data"]), _human("Ben", ["Data"])], []), tasks)
+    # 90h for 80h of room: the overload is real and stays visible.
+    assert sum(a.assigned_hours for a in out) == 90
+
+
+# ---------------------------------------------------------------------------
+# AI output that feeds a decision gets a human check
+# ---------------------------------------------------------------------------
+
+def _rt(name, skill, deps=(), stage=None, irreversible=False):
+    from models import Task
+    return Task(name, skill, 10, 1, dependencies=list(deps), stage=stage,
+                irreversible=irreversible)
+
+
+def test_ai_only_output_feeding_a_decision_gets_reviewed():
+    import routing
+    alone = routing.route_tasks([_rt("Weekly insights", "writing")])[0]["routing"]
+    assert alone == routing.AI_ONLY  # precondition: AI could own it alone
+    recs = routing.route_tasks([
+        _rt("Weekly insights", "writing"),
+        _rt("Approve budget changes", "strategy", deps=["Weekly insights"], stage="choice"),
+        _rt("Final report", "writing"),
+        _rt("Present findings", "coordination", deps=["Final report"], irreversible=True),
+    ])
+    by = {r["task"]: r for r in recs}
+    for name in ("Weekly insights", "Final report"):
+        assert by[name]["routing"] == routing.AI_FIRST_HUMAN_REVIEW, name
+        assert by[name]["review_hours"] > 0
+    assert "Approve budget changes" in by["Weekly insights"]["explanation"]
+
+
+def test_break_even_ai_verdict_has_no_negative_zero():
+    text = project_mode._ai_time_verdict({
+        "ai_time_saved": 40, "review_burden_hours": 31,
+        "expected_rework_hours": 9.3, "net_time_saved": -0.3})
+    assert "-0h" not in text and "breaks even" in text
 
 
 def test_skills_map_endpoint(monkeypatch):
